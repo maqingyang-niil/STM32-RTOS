@@ -20,6 +20,34 @@
 /* Includes ------------------------------------------------------------------*/
 #include "main.h"
 #include "stm32f4xx_it.h"
+#include "queue.h"
+#include "dma.h"
+
+
+extern DMA_HandleTypeDef hdma_memtomem;
+
+//DMA中断
+void DMA2_Stream0_IRQHandler(void){
+  HAL_DMA_IRQHandler(&hdma_memtomem);
+}
+
+//DMA传输完成回调函数
+void HAL_DMA_XferCpltCallback(DMA_HandleTypeDef *hdma){
+  Queue_t *queue=(Queue_t *)hdma->Parent;
+  if (queue!=NULL){
+    Queue_DMA_CpltCallback(queue);
+  }
+}
+
+//DMA传输错误回调函数
+void HAL_DMA_XferErrorCallback(DMA_HandleTypeDef *hdma){
+  Queue_t *queue=(Queue_t *)hdma->Parent;
+  if (queue!=NULL){
+    queue->dma_busy=false;//传输失败，重置DMA状态
+    Sem_Post(&queue->sem_dma_done);//通知等待的任务
+  }
+}
+
 /* Private includes ----------------------------------------------------------*/
 /* USER CODE BEGIN Includes */
 /* USER CODE END Includes */

@@ -28,6 +28,8 @@ virtualFolder:
                 - path: ../Core/Src/stm32f4xx_hal_timebase_tim.c
                 - path: ../Core/Src/scheduler.c
                 - path: ../Core/Src/semaphore.c
+                - path: ../Core/Src/dma.c
+                - path: ../Core/Src/queue.c
               folders: []
     - name: ::CMSIS
       files: []

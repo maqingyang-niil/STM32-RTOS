@@ -4,6 +4,11 @@
 #include <stdint.h>
 #include <stdbool.h>
 #include "semaphore.h"
+#include "stm32f4xx_hal.h"
+
+#define QUEUE_DMA_THRESHOLD 128
+
+
 
 
 typedef struct{
@@ -17,9 +22,25 @@ typedef struct{
     Semaphore_t sem_empty;
     Semaphore_t sem_full;
     Semaphore_t sem_mutex;
+    
+    //DMA相关
+    DMA_HandleTypeDef *hdma;
+    Semaphore_t sem_dma_done;
+    volatile bool dma_busy;
+
+    uint32_t dma_transfers;
+    uint32_t cpu_transfers;
 
     char name[16];
 }Queue_t;
+
+
+void Queue_Init_DMA(Queue_t *queue,
+                    void *buffer,
+                    uint32_t item_size,
+                    uint32_t max_items,
+                    DMA_HandleTypeDef *hdma,
+                    const char *name);
 
 
 void Queue_Init(Queue_t *queue,
@@ -31,6 +52,8 @@ void Queue_Init(Queue_t *queue,
 bool Queue_Send(Queue_t *queue,const void *item,uint32_t timeout_ms);
 
 bool Queue_Receive(Queue_t *queue,void *item,uint32_t timeout_ms);
+
+void Queue_DMA_CpltCallback(Queue_t *queue);
 
 bool Queue_TrySend(Queue_t *queue,const void *item);
 
@@ -49,7 +72,6 @@ bool Queue_IsFull(Queue_t *queue);
 void Queue_Flush(Queue_t *queue);
 
 void Queue_PrintStatus(Queue_t *queue);
-
 
 
 #endif /* __QUEUE_H */
