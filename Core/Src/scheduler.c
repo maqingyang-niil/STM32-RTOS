@@ -14,7 +14,6 @@ static uint32_t idle_stack[64];
 static volatile uint32_t idle_counter=0;
 static volatile uint32_t total_counter=0;
 
-
 //空闲任务函数
 static void idle_task_func(void){
     while(1){
@@ -22,7 +21,6 @@ static void idle_task_func(void){
         __WFI();
     }
 }
-
 
 //初始化任务调度器
 void Scheduler_Init(void){
@@ -45,7 +43,6 @@ void Scheduler_Init(void){
                       "Idle");
 }
 
-
 //添加任务
 void Scheduler_AddTask(TCB_t *tcb,
                        uint32_t *stack,
@@ -54,8 +51,8 @@ void Scheduler_AddTask(TCB_t *tcb,
                        uint8_t priority,
                        const char *name){
     if (taskCount>=MAX_TASK) return;
-    uint32_t *stk=&stack[stack_size-1];
-    *(stk)=0x01000000;            // xPSR
+    uint32_t *stk=&stack[stack_size];
+    *(--stk)=0x01000000;          // xPSR
     *(--stk)=(uint32_t)taskFunc;  // PC
     *(--stk)=0xFFFFFFFD;          // LR
     *(--stk)=0x12121212;          // R12
@@ -85,11 +82,10 @@ void Scheduler_AddTask(TCB_t *tcb,
     else{
         tcb->name[0]='\0';
     }
-
     taskList[taskCount++]=tcb;
 }
 
-
+//选择下一个要运行的任务
 TCB_t* SelectNextTask(void){
     TCB_t *highest=NULL;
     uint8_t highest_priority=0xFF;
@@ -131,15 +127,11 @@ void Scheduler_Start(void){
     }
 }
 
-
-
-
-
+//系统滴答定时器中断处理函数
 void SysTick_Handler(void){
     HAL_IncTick();
     
     total_counter++;//每次触发systick中断记录一次
-
 
     //更新任务延时时间
     for (uint8_t i=0;i<taskCount;i++){
@@ -173,6 +165,7 @@ void SysTick_Handler(void){
     }
 }
 
+//任务延时
 void Task_Delay(uint32_t ms){
     if (ms==0) return;
     
@@ -193,7 +186,7 @@ void Task_Delay(uint32_t ms){
     }
 }
 
-
+//任务主动放弃CPU
 void Task_Yield(void){
     nextTCB=SelectNextTask();
     if (nextTCB!=currentTCB){
@@ -201,6 +194,7 @@ void Task_Yield(void){
     }
 }
 
+//获取当前任务名称
 const char* Scheduler_GetCurrentTaskName(void){
     if (currentTCB){
         return ((TCB_t*)currentTCB)->name;
@@ -208,6 +202,7 @@ const char* Scheduler_GetCurrentTaskName(void){
     return "None";
 }
 
+//获取CPU使用率
 uint8_t Scheduler_GetCPUUsage(void) {
     static uint32_t last_idle = 0;
     static uint32_t last_total = 0;
@@ -231,7 +226,7 @@ uint8_t Scheduler_GetCPUUsage(void) {
     return (uint8_t)usage;
 }
 
-
+// PendSV中断处理函数，进行任务切换
 __attribute__((naked)) void PendSV_Handler(void){
   __asm volatile(
     "LDR R2, =isFirstSwitch\n" // 加载isFirstSwitch的地址到R2

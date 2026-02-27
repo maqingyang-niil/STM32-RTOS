@@ -5,10 +5,10 @@
 #include <stdbool.h>
 
 typedef struct{
-    uint32_t * volatile stackPtr;
+    uint32_t * volatile stackPtr;        //栈指针
     uint8_t priority;
     uint8_t state;
-    uint32_t delay_ticks;
+    uint32_t delay_ticks;    
     char name[16];
 } TCB_t;
 
@@ -20,11 +20,12 @@ extern volatile uint8_t isFirstSwitch;
 #define TASK_STATE_RUNNING    1
 #define TASK_STATE_BLOCKED    2
 
-#define MAX_TASK 8
-#define TIME_SLICE_MS 10
+#define MAX_TASK 9
+#define TIME_SLICE_MS 10      //时间片长度
 
 #define PRIORITY_IDLE 255
 #define IDLE_STACK_SIZE 64
+
 void Scheduler_Init(void);
 
 void Scheduler_AddTask(TCB_t *tcb,
@@ -33,7 +34,6 @@ void Scheduler_AddTask(TCB_t *tcb,
                        void (*taskFunc)(void),
                        uint8_t priority,
                        const char *name);
-
 
 void Scheduler_Start(void);
 
