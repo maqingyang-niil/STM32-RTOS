@@ -30,6 +30,7 @@ virtualFolder:
                 - path: ../Core/Src/semaphore.c
                 - path: ../Core/Src/dma.c
                 - path: ../Core/Src/queue.c
+                - path: ../Core/Src/mutex.c
               folders: []
     - name: ::CMSIS
       files: []

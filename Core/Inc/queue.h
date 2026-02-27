@@ -61,7 +61,7 @@ bool Queue_TryReceive(Queue_t *queue,void *item);
 
 bool Queue_Peek(Queue_t *queue,void *item);
 
-uint32_t Queue_count(Queue_t *queue);
+uint32_t Queue_GetCount(Queue_t *queue);
 
 uint32_t Queue_GetSpace(Queue_t *queue);
 
@@ -71,7 +71,7 @@ bool Queue_IsFull(Queue_t *queue);
 
 void Queue_Flush(Queue_t *queue);
 
-void Queue_PrintStatus(Queue_t *queue);
+//void Queue_PrintStatus(Queue_t *queue);
 
 
 #endif /* __QUEUE_H */
