@@ -3,28 +3,34 @@
 
 #include <stdint.h>
 #include <stdbool.h>
+#include <string.h>
+#include "stm32f4xx.h"
 
-typedef struct{
+typedef struct TCB_t{
     uint32_t * volatile stackPtr;        //栈指针
     uint8_t priority;
     uint8_t state;
-    uint32_t delay_ticks;    
+    uint32_t delay_ticks;
+    uint32_t wake_ticks;                 //唤醒时间
     char name[16];
+    struct TCB_t *next;                  //同优先级任务链表
 } TCB_t;
 
 extern volatile TCB_t *currentTCB;
 extern volatile TCB_t *nextTCB;
 extern volatile uint8_t isFirstSwitch;
-
+extern volatile uint32_t current_ticks;
 #define TASK_STATE_READY      0
-#define TASK_STATE_RUNNING    1
+#define TASK_STATE_SUSPENDED  1
 #define TASK_STATE_BLOCKED    2
 
-#define MAX_TASK 9
-#define TIME_SLICE_MS 10      //时间片长度
+#define MAX_TASK          32
+#define TIME_SLICE_MS     10      //时间片长度
 
-#define PRIORITY_IDLE 255
-#define IDLE_STACK_SIZE 64
+#define PRIORITY_IDLE     32      //空闲任务优先级,设为32的原因是，确保任何任务的优先级（0-31）都比idle_task高
+#define PRIORITY_LEVELS   32      //优先级级数
+
+#define IDLE_STACK_SIZE   64      //空闲任务栈大小
 
 void Scheduler_Init(void);
 
@@ -41,19 +47,13 @@ TCB_t* SelectNextTask(void);
 
 void Task_Delay(uint32_t ms);
 
+void Task_SetState(TCB_t *tcb,uint8_t new_state);
+
 void Task_Yield(void);
 
 const char* Scheduler_GetCurrentTaskName(void);
 
-uint8_t Scheduler_GetCPUUsage(void);
-
-
-
-
-
-
-
-
-
+uint32_t GetCurrentTicks(void);
+//uint8_t Scheduler_GetCPUUsage(void);
 
 #endif /* __SCHEDULER_H */
