@@ -1,18 +1,15 @@
 #include "scheduler.h"
 
-
 volatile TCB_t *currentTCB=NULL;
 volatile TCB_t *nextTCB=NULL;
 volatile uint8_t isFirstSwitch=1;
 volatile uint32_t current_ticks=0;
-static volatile uint32_t tick_count=0;
+static volatile uint32_t tick_count=0;    //时间记数，用于确定分片时间
 static TCB_t *taskList[MAX_TASK];    //任务列表
 static uint8_t taskCount=0;          //任务数量
 
 static TCB_t idle_tcb;
 static uint32_t idle_stack[64];
-static volatile uint32_t idle_counter=0;
-static volatile uint32_t total_counter=0;
 
 static uint32_t ready_bitmap=0;                   //就绪位图
 static TCB_t *ready_list[PRIORITY_LEVELS]={NULL}; //每个优先级的环形列表的表尾
@@ -22,11 +19,6 @@ static TCB_t *delay_list=NULL;                    //延迟链表
 #define SET_READY_BIT(priority)    (ready_bitmap|=(1U<<(priority)))
 #define CLEAR_READY_BIT(priority)  (ready_bitmap&=~(1U<<(priority)))
 #define IS_READY_BIT_SET(priority) (ready_bitmap&(1U<<(priority)))
-
-//临界区操作
-
-
-
 
 /*
 获取当前时钟计数值
@@ -68,6 +60,9 @@ static void AddToDelayList(TCB_t *tcb){
     __set_PRIMASK(primask);
 }
 
+/*
+被DelayListCheck调用，用于确定当前delay任务和基准时钟的差值
+*/
 static inline uint32_t TickDiff(uint32_t a,uint32_t b){
     return (int32_t)(a-b);
 }
@@ -89,7 +84,6 @@ static void DelayListCheck(void){
     }
     __set_PRIMASK(primask);
 }
-
 
 /*
 内部函数，
@@ -211,7 +205,6 @@ void Task_SetState(TCB_t *tcb,uint8_t new_state){
 //空闲任务函数
 static void idle_task_func(void){
     while(1){
-        idle_counter++;//每次进入idle任务，加一
         __WFI();
     }
 }
@@ -225,8 +218,6 @@ void Scheduler_Init(void){
     currentTCB=NULL;
     nextTCB=NULL;
     isFirstSwitch=1;
-    idle_counter=0;
-    total_counter=0;
     ready_bitmap=0;
     tick_count=0;
     for (int i=0;i<MAX_TASK;i++){

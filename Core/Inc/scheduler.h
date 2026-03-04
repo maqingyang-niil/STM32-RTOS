@@ -27,7 +27,7 @@ extern volatile uint32_t current_ticks;
 #define MAX_TASK          32
 #define TIME_SLICE_MS     10      //时间片长度
 
-#define PRIORITY_IDLE     32      //空闲任务优先级,设为32的原因是，确保任何任务的优先级（0-31）都比idle_task高
+#define PRIORITY_IDLE     31      //任何任务的优先级都要比idle_task高
 #define PRIORITY_LEVELS   32      //优先级级数
 
 #define IDLE_STACK_SIZE   64      //空闲任务栈大小
@@ -54,6 +54,5 @@ void Task_Yield(void);
 const char* Scheduler_GetCurrentTaskName(void);
 
 uint32_t GetCurrentTicks(void);
-//uint8_t Scheduler_GetCPUUsage(void);
 
 #endif /* __SCHEDULER_H */
