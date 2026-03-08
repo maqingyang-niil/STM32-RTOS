@@ -63,7 +63,7 @@ static void AddToDelayList(TCB_t *tcb){
 /*
 被DelayListCheck调用，用于确定当前delay任务和基准时钟的差值
 */
-static inline uint32_t TickDiff(uint32_t a,uint32_t b){
+static inline int32_t TickDiff(uint32_t a,uint32_t b){
     return (int32_t)(a-b);
 }
 /*
@@ -75,14 +75,21 @@ static inline uint32_t TickDiff(uint32_t a,uint32_t b){
 static void DelayListCheck(void){
     uint32_t primask=__get_PRIMASK();
     __disable_irq();
-
+    bool need_immed_schedule=false;
     while(delay_list!=NULL && TickDiff(current_ticks,delay_list->wake_ticks)>=0){//满足条件，该移出delay_list
         TCB_t *tcb=delay_list;
         delay_list=delay_list->next;
         tcb->next=NULL;
         Task_SetState(tcb,TASK_STATE_READY);
+        if (currentTCB && tcb->priority<((TCB_t*)currentTCB)->priority){
+            need_immed_schedule=true;
+        }
     }
     __set_PRIMASK(primask);
+
+    if (need_immed_schedule){
+        SCB->ICSR |= SCB_ICSR_PENDSVSET_Msk;
+    }
 }
 
 /*
@@ -175,7 +182,7 @@ TCB_t* SelectNextTask(void){
 /*
 设置任务状态
 将任务移入对应队列
-严格临界区内操作
+内部严格临界区内操作
 */
 void Task_SetState(TCB_t *tcb,uint8_t new_state){
     uint32_t primask=__get_PRIMASK();
@@ -274,6 +281,7 @@ void Scheduler_AddTask(TCB_t *tcb,
     tcb->delay_ticks=0;
     tcb->wake_ticks=0;
     tcb->next=NULL;
+    tcb->state=(uint8_t)414;//规避Task_SetState的错误，后期修改
     if (name){
         strncpy(tcb->name,name,sizeof(tcb->name)-1);
         tcb->name[sizeof(tcb->name)-1]='\0';
@@ -281,11 +289,11 @@ void Scheduler_AddTask(TCB_t *tcb,
     else{
         tcb->name[0]='\0';
     }
-    taskList[taskCount++]=tcb;
     uint32_t primask=__get_PRIMASK();
     __disable_irq();
-    AddToReadyList(tcb);
+    taskList[taskCount++]=tcb;
     __set_PRIMASK(primask);
+    Task_SetState(tcb,TASK_STATE_READY);
 }
 
 /*
@@ -298,12 +306,10 @@ void Scheduler_Start(void){
     if (taskCount==0){
         while(1);
     }
-
-    nextTCB=SelectNextTask();
     
     SysTick_Config(SystemCoreClock/1000); // 配置SysTick定时器
     HAL_NVIC_SetPriority(SysTick_IRQn,0,0); // 设置SysTick中断优先级
-    HAL_NVIC_SetPriority(PendSV_IRQn,0xF,0);
+    HAL_NVIC_SetPriority(PendSV_IRQn,0xE,0);
 
     __enable_irq(); // 使能全局中断
 
@@ -335,6 +341,7 @@ void SysTick_Handler(void){
 
 /*
 任务延时
+AddToDelayList在task_delay中完成
 */
 void Task_Delay(uint32_t ms){
     if (ms==0) return;
@@ -343,7 +350,8 @@ void Task_Delay(uint32_t ms){
     if (currentTCB){
         ((TCB_t*)currentTCB)->delay_ticks=ms;
         ((TCB_t*)currentTCB)->wake_ticks=ms+current_ticks;
-        Task_SetState((TCB_t*)currentTCB,TASK_STATE_BLOCKED);
+        //Task_SetState((TCB_t*)currentTCB,TASK_STATE_BLOCKED);
+        AddToDelayList((TCB_t*)currentTCB);
         __set_PRIMASK(primask);
         SCB->ICSR |= SCB_ICSR_PENDSVSET_Msk;
     }
@@ -381,7 +389,7 @@ __attribute__((naked)) void PendSV_Handler(void)
         "LDRB  R2, [R1]               \n"   // 字节读取
         "CBZ   R2, normal_switch      \n"   // R2==0 跳到正常流程
         "MOV   R2, #0                 \n"
-        "STRB  R2, [R1]               \n"   // 字节写入，清除标志
+        "STRB  R2, [R1]               \n"   // 字节写入，清除标志（即把isFirstSwitch修改为1）
 
         /* ========= 第一次启动 ========= */
         "first_switch:                \n"
