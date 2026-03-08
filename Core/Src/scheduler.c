@@ -171,6 +171,9 @@ TCB_t* SelectNextTask(void){
         //轮转，即移动指针指向下一个位置的tcb
         if (task!=NULL){
             ready_list[hightest_priority]=task->next;
+            if (task!=(TCB_t*)currentTCB){
+                tick_count=0;
+            }
             return task;
         }
         //不用清位的方式，因为出现这种情况已经是其他地方临界区出现问题了，用清位的方式不能从根本上解决问题。
