@@ -389,45 +389,49 @@ __attribute__((naked)) void PendSV_Handler(void)
     __asm volatile(
         /* ========= 判断是否第一次启动 ========= */
         "LDR   R1, =isFirstSwitch     \n"
-        "LDRB  R2, [R1]               \n"   // 字节读取
-        "CBZ   R2, normal_switch      \n"   // R2==0 跳到正常流程
-        "MOV   R2, #0                 \n"
-        "STRB  R2, [R1]               \n"   // 字节写入，清除标志（即把isFirstSwitch修改为1）
+        "LDRB  R2, [R1]               \n"
+        "CBZ   R2, normal_switch       \n"
+        "MOV   R2, #0                  \n"
+        "STRB  R2, [R1]               \n"
 
         /* ========= 第一次启动 ========= */
-        "first_switch:                \n"
-        "PUSH  {R4, LR}               \n"   // 保存 EXC_RETURN + 对齐
-        "BL    SelectNextTask         \n"
+        "PUSH  {R4, LR}               \n"
+        "BL    SelectNextTask          \n"
         "POP   {R4, LR}               \n"
         "LDR   R1, =currentTCB        \n"
         "STR   R0, [R1]               \n"
         "LDR   R0, [R0]               \n"
         "LDMIA R0!, {R4-R11}          \n"
         "MSR   PSP, R0                \n"
-        "ORR   LR, LR, #0x04          \n"
-        "BX    LR                     \n"
+        "ORR   LR, LR, #0x04         \n"
+        "BX    LR                      \n"
 
         /* ========= 正常切换 ========= */
-        "normal_switch:               \n"
-        "MRS   R0, PSP                \n"
-        "STMDB R0!, {R4-R11}          \n"
-        "LDR   R1, =currentTCB        \n"
-        "LDR   R1, [R1]               \n"
-        "STR   R0, [R1]               \n"
+        "normal_switch:                \n"
+        /* 先选任务 */
         "PUSH  {R4, LR}               \n"
-        "BL    SelectNextTask         \n"
+        "BL    SelectNextTask          \n"
         "POP   {R4, LR}               \n"
+
+        /* 比较是否需要切换 */
         "LDR   R1, =currentTCB        \n"
-        "STR   R0, [R1]               \n"
-        "LDR   R0, [R0]               \n"
+        "LDR   R2, [R1]               \n"   // R2 = currentTCB
+        "CMP   R0, R2                 \n"
+        "BEQ   no_switch              \n"   // 相同任务，直接返回
+
+        /* 保存旧任务上下文 */
+        "MRS   R3, PSP                \n"
+        "STMDB R3!, {R4-R11}          \n"
+        "STR   R3, [R2]               \n"   // currentTCB->stackPtr = R3
+
+        /* 切换到新任务 */
+        "STR   R0, [R1]               \n"   // currentTCB = nextTask
+        "LDR   R0, [R0]               \n"   // R0 = nextTask->stackPtr
         "LDMIA R0!, {R4-R11}          \n"
         "MSR   PSP, R0                \n"
-        "ORR   LR, LR, #0x04          \n"
-        "BX    LR                     \n"
+
+        "no_switch:                    \n"
+        "ORR   LR, LR, #0x04         \n"
+        "BX    LR                      \n"
     );
 }
-
-
-
-
-
