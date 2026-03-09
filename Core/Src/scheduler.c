@@ -37,8 +37,6 @@ static void AddToDelayList(TCB_t *tcb){
     if (tcb==NULL){
         return;
     }
-    uint32_t primask=__get_PRIMASK();
-    __disable_irq();
     //设置任务状态
     Task_SetState(tcb,TASK_STATE_BLOCKED);
     tcb->next=NULL;//冗余设计
@@ -46,7 +44,6 @@ static void AddToDelayList(TCB_t *tcb){
     if (delay_list==NULL || (int32_t)(delay_list->wake_ticks-tcb->wake_ticks)>0){
         tcb->next=delay_list;
         delay_list=tcb;
-        __set_PRIMASK(primask);
         return;
     }
     TCB_t *prev=delay_list;
@@ -58,7 +55,6 @@ static void AddToDelayList(TCB_t *tcb){
     }
     tcb->next=curr;
     prev->next=tcb;
-    __set_PRIMASK(primask);
 }
 
 /*
@@ -167,21 +163,27 @@ static void RemoveFromReadyList(TCB_t *tcb){
 如果出现ready_map和ready_list不相符的情况，返回idle_tcb，which is theoretically impossible
 */
 TCB_t* SelectNextTask(void){
+    uint32_t primask=__get_PRIMASK();
+    __disable_irq();
+    TCB_t *result=&idle_tcb;
     while(ready_bitmap){
         uint8_t hightest_priority=__CLZ(__RBIT(ready_bitmap));
         TCB_t *task=ready_list[hightest_priority];
         //轮转，即移动指针指向下一个位置的tcb
         if (task!=NULL){
             ready_list[hightest_priority]=task->next;
-            if (task!=(TCB_t*)currentTCB){
+            if (task!=(TCB_t*)currentTCB){//立刻请求调度
                 tick_count=0;
             }
-            return task;
+            result=task;
+            break;
         }
         //不用清位的方式，因为出现这种情况已经是其他地方临界区出现问题了，用清位的方式不能从根本上解决问题。
-        return &idle_tcb;
+        result=&idle_tcb;
+        break;
     }
-    return &idle_tcb;
+    __set_PRIMASK(primask);
+    return result;
 }
 
 /*
@@ -224,6 +226,7 @@ static void idle_task_func(void){
 /*
 初始化任务调度器
 加入idle任务
+无需临界区保护
 */
 void Scheduler_Init(void){
     taskCount=0;
@@ -249,6 +252,7 @@ void Scheduler_Init(void){
 
 /*
 添加任务
+内部局部临界区保护
 */
 void Scheduler_AddTask(TCB_t *tcb,
                        uint32_t *stack,
@@ -316,9 +320,10 @@ void Scheduler_Start(void){
     HAL_NVIC_SetPriority(SysTick_IRQn,0,0); // 设置SysTick中断优先级
     HAL_NVIC_SetPriority(PendSV_IRQn,0xE,0);
 
+    SCB->ICSR |= SCB_ICSR_PENDSVSET_Msk; // PendSV中断是开中断后的第一个
     __enable_irq(); // 使能全局中断
 
-    SCB->ICSR |= SCB_ICSR_PENDSVSET_Msk; // 触发PendSV中断，开始调度
+    
     //理论上永远不会返回这里了
     while(1){
         __NOP();
@@ -412,9 +417,7 @@ __attribute__((naked)) void PendSV_Handler(void)
         "normal_switch:               \n"
         /* 先选任务 */
         "PUSH  {R4, LR}               \n"
-        "CPSID I                      \n"
         "BL    SelectNextTask         \n"
-        "CPSIE I                      \n"
         "POP   {R4, LR}               \n"
 
         /* 比较是否需要切换 */
