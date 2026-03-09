@@ -41,8 +41,9 @@ static void AddToDelayList(TCB_t *tcb){
     __disable_irq();
     //设置任务状态
     Task_SetState(tcb,TASK_STATE_BLOCKED);
+    tcb->next=NULL;//冗余设计
     //如果当前delay_list中没有任务 或者 第一个任务的wake_ticks比tcb的小，插入头部
-    if (delay_list==NULL || delay_list->wake_ticks>tcb->wake_ticks){
+    if (delay_list==NULL || (int32_t)(delay_list->wake_ticks-tcb->wake_ticks)>0){
         tcb->next=delay_list;
         delay_list=tcb;
         __set_PRIMASK(primask);
@@ -51,7 +52,7 @@ static void AddToDelayList(TCB_t *tcb){
     TCB_t *prev=delay_list;
     TCB_t *curr=delay_list->next;
 
-    while(curr!=NULL&&curr->wake_ticks<tcb->wake_ticks){
+    while(curr!=NULL&&(int32_t)(curr->wake_ticks-tcb->wake_ticks)<0){
         prev=curr;
         curr=curr->next;
     }
@@ -97,6 +98,7 @@ static void DelayListCheck(void){
 将任务加入就绪链表，依赖调用者保证临界区
 插入任务时，要更新这个环形列表的头指针未知，始终指向尾节点（轮转）
 由Task_SetState函数调用，严格临界区内操作
+一定确保移出后tcb->next=NULL
 */
 static void AddToReadyList(TCB_t *tcb){
     if (tcb==NULL){
@@ -284,7 +286,7 @@ void Scheduler_AddTask(TCB_t *tcb,
     tcb->delay_ticks=0;
     tcb->wake_ticks=0;
     tcb->next=NULL;
-    tcb->state=(uint8_t)414;//规避Task_SetState的错误，后期修改
+    tcb->state=TASK_STATE_UNINIT;
     if (name){
         strncpy(tcb->name,name,sizeof(tcb->name)-1);
         tcb->name[sizeof(tcb->name)-1]='\0';
@@ -390,27 +392,29 @@ __attribute__((naked)) void PendSV_Handler(void)
         /* ========= 判断是否第一次启动 ========= */
         "LDR   R1, =isFirstSwitch     \n"
         "LDRB  R2, [R1]               \n"
-        "CBZ   R2, normal_switch       \n"
-        "MOV   R2, #0                  \n"
+        "CBZ   R2, normal_switch      \n"
+        "MOV   R2, #0                 \n"
         "STRB  R2, [R1]               \n"
 
         /* ========= 第一次启动 ========= */
         "PUSH  {R4, LR}               \n"
-        "BL    SelectNextTask          \n"
+        "BL    SelectNextTask         \n"
         "POP   {R4, LR}               \n"
         "LDR   R1, =currentTCB        \n"
         "STR   R0, [R1]               \n"
         "LDR   R0, [R0]               \n"
         "LDMIA R0!, {R4-R11}          \n"
         "MSR   PSP, R0                \n"
-        "ORR   LR, LR, #0x04         \n"
-        "BX    LR                      \n"
+        "ORR   LR, LR, #0x04          \n"
+        "BX    LR                     \n"
 
         /* ========= 正常切换 ========= */
-        "normal_switch:                \n"
+        "normal_switch:               \n"
         /* 先选任务 */
         "PUSH  {R4, LR}               \n"
-        "BL    SelectNextTask          \n"
+        "CPSID I                      \n"
+        "BL    SelectNextTask         \n"
+        "CPSIE I                      \n"
         "POP   {R4, LR}               \n"
 
         /* 比较是否需要切换 */
@@ -430,8 +434,8 @@ __attribute__((naked)) void PendSV_Handler(void)
         "LDMIA R0!, {R4-R11}          \n"
         "MSR   PSP, R0                \n"
 
-        "no_switch:                    \n"
-        "ORR   LR, LR, #0x04         \n"
-        "BX    LR                      \n"
+        "no_switch:                   \n"
+        "ORR   LR, LR, #0x04          \n"
+        "BX    LR                     \n"
     );
 }

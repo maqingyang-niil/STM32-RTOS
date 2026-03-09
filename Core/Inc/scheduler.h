@@ -23,6 +23,7 @@ extern volatile uint32_t current_ticks;
 #define TASK_STATE_READY      0
 #define TASK_STATE_SUSPENDED  1
 #define TASK_STATE_BLOCKED    2
+#define TASK_STATE_UNINIT     0xFF
 
 #define MAX_TASK          32
 #define TIME_SLICE_MS     10      //时间片长度
