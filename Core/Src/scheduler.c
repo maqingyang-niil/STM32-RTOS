@@ -34,15 +34,7 @@ uint32_t GetCurrentTicks(void){
 在调用这个函数之前，应当把任务唤醒的时间载入TCB
 */
 static void AddToDelayList(TCB_t *tcb){
-    if (tcb==NULL){
-        return;
-    }
-    //防止重复加入
-    if (tcb->state==TASK_STATE_DELAYED){
-        return;
-    }
-    //设置任务状态
-    Task_SetState(tcb,TASK_STATE_DELAYED);
+    if (tcb==NULL)  return;
     tcb->next=NULL;//冗余设计
     //如果当前delay_list中没有任务 或者 第一个任务的wake_ticks比tcb的小，插入头部
     if (delay_list==NULL || (int32_t)(delay_list->wake_ticks-tcb->wake_ticks)>0){
@@ -106,8 +98,7 @@ static void DelayListCheck(void){
     bool need_immed_schedule=false;
     while(delay_list!=NULL && TickDiff(current_ticks,delay_list->wake_ticks)>=0){//满足条件，该移出delay_list
         TCB_t *tcb=delay_list;
-        delay_list=delay_list->next;
-        tcb->next=NULL;
+        // Task_SetState 会自己从 delay_list 摘除再加入 ready_list
         Task_SetState(tcb,TASK_STATE_READY);
         if (currentTCB && tcb->priority<((TCB_t*)currentTCB)->priority){
             need_immed_schedule=true;
@@ -131,9 +122,7 @@ static void AddToReadyList(TCB_t *tcb){
     if (tcb==NULL){
         return;
     }
-
     uint8_t priority=tcb->priority;
-
     SET_READY_BIT(priority);
 
     //该任务为当前优先级第一个任务
@@ -197,21 +186,18 @@ TCB_t* SelectNextTask(void){
     uint32_t primask=__get_PRIMASK();
     __disable_irq();
     TCB_t *result=&idle_tcb;
-    while(ready_bitmap){
+    
+    if (ready_bitmap){
         uint8_t hightest_priority=__CLZ(__RBIT(ready_bitmap));
-        TCB_t *task=ready_list[hightest_priority];
-        //轮转，即移动指针指向下一个位置的tcb
-        if (task!=NULL){
-            ready_list[hightest_priority]=task->next;
-            if (task!=(TCB_t*)currentTCB){//立刻请求调度
+        TCB_t *tail=ready_list[hightest_priority];
+        if (tail!=NULL){
+            TCB_t *head=tail->next;
+            ready_list[hightest_priority]=head;
+            if (head!=(TCB_t*)currentTCB){
                 tick_count=0;
             }
-            result=task;
-            break;
+            result=head;
         }
-        //不用清位的方式，因为出现这种情况已经是其他地方临界区出现问题了，用清位的方式不能从根本上解决问题。
-        result=&idle_tcb;
-        break;
     }
     __set_PRIMASK(primask);
     return result;
@@ -225,24 +211,17 @@ TCB_t* SelectNextTask(void){
 void Task_SetState(TCB_t *tcb,uint8_t new_state){
     uint32_t primask=__get_PRIMASK();
     __disable_irq();
-    //tcb为空，直接退
-    if (tcb==NULL){
+    if (tcb==NULL || tcb->state==new_state){
         __set_PRIMASK(primask);
         return;
     }
-    //要设置的状态和当前的状态相同，直接退
-    if (new_state==tcb->state){
-        __set_PRIMASK(primask);
-        return;
-    }
-    
-    if (tcb->state==TASK_STATE_READY){
-        RemoveFromReadyList(tcb);
-    }
-    
-    if (new_state==TASK_STATE_READY){
-        AddToReadyList(tcb);
-    }
+    //离开旧状态
+    if (tcb->state==TASK_STATE_READY)    RemoveFromReadyList(tcb);
+    if (tcb->state==TASK_STATE_DELAYED)  RemoveFromDelayList(tcb);
+    //进入新状态
+    if (new_state==TASK_STATE_READY)     AddToReadyList(tcb);
+    if (new_state==TASK_STATE_DELAYED)   AddToDelayList(tcb);
+
     tcb->state=new_state;
     __set_PRIMASK(primask);
 }
@@ -391,15 +370,10 @@ void Task_Delay(uint32_t ms){
     if (currentTCB){
         ((TCB_t*)currentTCB)->delay_ticks=ms;
         ((TCB_t*)currentTCB)->wake_ticks=ms+current_ticks;
-        //Task_SetState((TCB_t*)currentTCB,TASK_STATE_BLOCKED);
-        AddToDelayList((TCB_t*)currentTCB);
-        __set_PRIMASK(primask);
-        SCB->ICSR |= SCB_ICSR_PENDSVSET_Msk;
+        Task_SetState((TCB_t*)currentTCB,TASK_STATE_DELAYED);
     }
-    else{
-        __set_PRIMASK(primask);
-        return;
-    }
+    __set_PRIMASK(primask);
+    SCB->ICSR |= SCB_ICSR_PENDSVSET_Msk;
 }
 
 /*
@@ -480,24 +454,9 @@ __attribute__((naked)) void PendSV_Handler(void)
 内部临界区保护
 */
 void Task_Suspend(TCB_t *tcb){
-    if (tcb==NULL){
-        return;
-    }
-
-    if ((TCB_t*)currentTCB==tcb){
-        return;
-    }
-
-    if (tcb->state==TASK_STATE_SUSPENDED){
-        return;
-    }
-
-    if (tcb->state==TASK_STATE_DELAYED){
-        uint32_t primask=__get_PRIMASK();
-        __disable_irq();
-        RemoveFromDelayList(tcb);
-        __set_PRIMASK(primask);
-    }
+    if (tcb==NULL)  return;
+    if ((TCB_t*)currentTCB==tcb)  return;
+    if (tcb->state==TASK_STATE_SUSPENDED)  return;
     Task_SetState(tcb,TASK_STATE_SUSPENDED);
 }
 
