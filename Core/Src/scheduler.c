@@ -37,8 +37,12 @@ static void AddToDelayList(TCB_t *tcb){
     if (tcb==NULL){
         return;
     }
+    //防止重复加入
+    if (tcb->state==TASK_STATE_DELAYED){
+        return;
+    }
     //设置任务状态
-    Task_SetState(tcb,TASK_STATE_BLOCKED);
+    Task_SetState(tcb,TASK_STATE_DELAYED);
     tcb->next=NULL;//冗余设计
     //如果当前delay_list中没有任务 或者 第一个任务的wake_ticks比tcb的小，插入头部
     if (delay_list==NULL || (int32_t)(delay_list->wake_ticks-tcb->wake_ticks)>0){
@@ -58,6 +62,33 @@ static void AddToDelayList(TCB_t *tcb){
 }
 
 /*
+从delay_list中移除指定任务
+依赖调用者保证临界区
+移除后tcb->next=NULL
+*/
+static void RemoveFromDelayList(TCB_t *tcb){
+    if (tcb==NULL || delay_list==NULL){
+        return;
+    }
+    // 头节点
+    if (delay_list==tcb){
+        delay_list=tcb->next;
+        tcb->next=NULL;
+        return;
+    }
+    // 非头节点：找前驱
+    TCB_t *prev=delay_list;
+    while(prev->next!=NULL && prev->next!=tcb){
+        prev=prev->next;
+    }
+    if (prev->next==NULL){
+        return; // 未找到
+    }
+    prev->next=tcb->next;
+    tcb->next=NULL;
+}
+
+/*
 被DelayListCheck调用，用于确定当前delay任务和基准时钟的差值
 */
 static inline int32_t TickDiff(uint32_t a,uint32_t b){
@@ -65,7 +96,7 @@ static inline int32_t TickDiff(uint32_t a,uint32_t b){
 }
 /*
 检查delay_list中的任务是不是应该放出来了
-临界区保护操作
+内部临界区保护操作
 供systick_handler调用
 如果有符合唤醒条件任务，将该任务加入ready list
 */
@@ -205,10 +236,10 @@ void Task_SetState(TCB_t *tcb,uint8_t new_state){
         return;
     }
     
-    if (new_state==TASK_STATE_BLOCKED){
+    if (tcb->state==TASK_STATE_READY){
         RemoveFromReadyList(tcb);
     }
-
+    
     if (new_state==TASK_STATE_READY){
         AddToReadyList(tcb);
     }
@@ -441,4 +472,46 @@ __attribute__((naked)) void PendSV_Handler(void)
         "ORR   LR, LR, #0x04          \n"
         "BX    LR                     \n"
     );
+}
+
+/*
+挂起任务
+不能自己挂起自己
+内部临界区保护
+*/
+void Task_Suspend(TCB_t *tcb){
+    if (tcb==NULL){
+        return;
+    }
+
+    if ((TCB_t*)currentTCB==tcb){
+        return;
+    }
+
+    if (tcb->state==TASK_STATE_SUSPENDED){
+        return;
+    }
+
+    if (tcb->state==TASK_STATE_DELAYED){
+        uint32_t primask=__get_PRIMASK();
+        __disable_irq();
+        RemoveFromDelayList(tcb);
+        __set_PRIMASK(primask);
+    }
+    Task_SetState(tcb,TASK_STATE_SUSPENDED);
+}
+
+void Task_SuspendSelf(void){
+    if (currentTCB==NULL) return;
+    Task_SetState((TCB_t*)currentTCB,TASK_STATE_SUSPENDED);
+    SCB->ICSR |= SCB_ICSR_PENDSVSET_Msk;
+}
+
+void Task_Resume(TCB_t *tcb){
+    if (tcb==NULL) return;
+    if (tcb->state!=TASK_STATE_SUSPENDED) return;
+    Task_SetState(tcb,TASK_STATE_READY);
+    if (currentTCB && tcb->priority<((TCB_t*)currentTCB)->priority){
+        SCB->ICSR |= SCB_ICSR_PENDSVSET_Msk;
+    }
 }

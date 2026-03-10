@@ -23,6 +23,7 @@ extern volatile uint32_t current_ticks;
 #define TASK_STATE_READY      0
 #define TASK_STATE_SUSPENDED  1
 #define TASK_STATE_BLOCKED    2
+#define TASK_STATE_DELAYED    3
 #define TASK_STATE_UNINIT     0xFF
 
 #define MAX_TASK          32
@@ -55,5 +56,11 @@ void Task_Yield(void);
 const char* Scheduler_GetCurrentTaskName(void);
 
 uint32_t GetCurrentTicks(void);
+
+void Task_Suspend(TCB_t *tcb);
+
+void Task_SuspendSelf(void);
+
+void Task_Resume(TCB_t *tcb);
 
 #endif /* __SCHEDULER_H */
