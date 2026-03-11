@@ -1,10 +1,7 @@
 #include "queue.h"
 #include "scheduler.h"
 #include "semaphore.h"
-#include <stdio.h>
-#include <string.h>
-#include <stdbool.h>
-#include <stdint.h>
+
 //带DMA初始化
 void Queue_Init_DMA(Queue_t *queue,
                     void *buffer,
@@ -30,8 +27,6 @@ void Queue_Init_DMA(Queue_t *queue,
     //DMA初始化
     queue->hdma=hdma;
     queue->dma_busy=false;
-    queue->dma_transfers=0;
-    queue->cpu_transfers=0;
     queue->count=0;
 
     if (hdma!=NULL){
@@ -87,7 +82,6 @@ static bool Queue_DMA_Transfer(Queue_t *queue,
     }
 
     queue->dma_busy=false;
-    queue->dma_transfers++;
     return true;
 }
 
@@ -122,21 +116,18 @@ bool Queue_Send(Queue_t *queue,const void *item,uint32_t timeout_ms){
             if (!success){
                 //传输失败，用CPU传输
                 memcpy(dest,item,queue->item_size);
-                queue->cpu_transfers++;
                 success=true;
             }
         }
         else{
             //地址不对齐，使用DMA
             memcpy(dest,item,queue->item_size);
-            queue->cpu_transfers++;
             success=true;
         }
     }
     else{
         //使用CPU传输
         memcpy(dest,item,queue->item_size);
-        queue->cpu_transfers++;
         success=true;
     }
     
@@ -187,21 +178,18 @@ bool Queue_Receive(Queue_t *queue,void *item,uint32_t timeout_ms){
             if (!success){
                 //DMA失败，使用CPU传输
                 memcpy(item,src,queue->item_size);
-                queue->cpu_transfers++;
                 success=true;
             }
         }
         else{
             //地址不对齐，使用CPU传输
             memcpy(item,src,queue->item_size);
-            queue->cpu_transfers++;
             success=true;
         }
     }
     else{
         //未启用DMA或者数据量小，使用CPU传输
         memcpy(item,src,queue->item_size);
-        queue->cpu_transfers++;
         success=true;
     }
 

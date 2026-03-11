@@ -17,7 +17,6 @@ typedef struct TCB_t{
 } TCB_t;
 
 extern volatile TCB_t *currentTCB;
-extern volatile TCB_t *nextTCB;
 extern volatile uint8_t isFirstSwitch;
 extern volatile uint32_t current_ticks;
 #define TASK_STATE_READY      0

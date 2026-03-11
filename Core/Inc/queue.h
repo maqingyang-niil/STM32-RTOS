@@ -3,13 +3,11 @@
 
 #include <stdint.h>
 #include <stdbool.h>
+#include <string.h>
 #include "semaphore.h"
 #include "stm32f4xx_hal.h"
 
-#define QUEUE_DMA_THRESHOLD 128
-
-
-
+#define QUEUE_DMA_THRESHOLD 128     //使用DMA传送的门槛
 
 typedef struct{
     void *buffer;
@@ -27,9 +25,6 @@ typedef struct{
     DMA_HandleTypeDef *hdma;
     Semaphore_t sem_dma_done;
     volatile bool dma_busy;
-
-    uint32_t dma_transfers;
-    uint32_t cpu_transfers;
 
     char name[16];
 }Queue_t;

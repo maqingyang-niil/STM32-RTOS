@@ -3,7 +3,6 @@
 #include "scheduler.h"
 
 extern volatile TCB_t *currentTCB;
-extern volatile TCB_t *nextTCB;
 extern TCB_t* SelectNextTask(void);
 
 
@@ -65,12 +64,12 @@ bool Mutex_Lock(Mutex_t *mutex,uint32_t timeout_ms){
         mutex->owner->priority=current->priority;
         //通过优先级继承抬高了拿着锁的任务，就要立刻把他送到CPU上运行
         //以便尽快释放锁
-        nextTCB=SelectNextTask();
-        if (nextTCB!=currentTCB){
-            __enable_irq();
-            SCB->ICSR=SCB_ICSR_PENDSVSET_Msk;
-            __disable_irq();
-        }
+        // nextTCB=SelectNextTask();
+        // if (nextTCB!=currentTCB){
+        //     __enable_irq();
+        //     SCB->ICSR=SCB_ICSR_PENDSVSET_Msk;
+        //     __disable_irq();
+        // }
     }
 
 
@@ -80,7 +79,7 @@ bool Mutex_Lock(Mutex_t *mutex,uint32_t timeout_ms){
 
         current->state=TASK_STATE_BLOCKED;
         __enable_irq();
-        nextTCB=SelectNextTask();
+        //nextTCB=SelectNextTask();
         SCB->ICSR=SCB_ICSR_PENDSVSET_Msk;
 
         while(current->state==TASK_STATE_BLOCKED){

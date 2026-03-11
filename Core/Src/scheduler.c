@@ -1,7 +1,6 @@
 #include "scheduler.h"
 
 volatile TCB_t *currentTCB=NULL;
-volatile TCB_t *nextTCB=NULL;
 volatile uint8_t isFirstSwitch=1;
 volatile uint32_t current_ticks=0;
 static volatile uint32_t tick_count=0;    //时间记数，用于确定分片时间
@@ -239,7 +238,6 @@ static void idle_task_func(void){
 void Scheduler_Init(void){
     taskCount=0;
     currentTCB=NULL;
-    nextTCB=NULL;
     isFirstSwitch=1;
     ready_bitmap=0;
     tick_count=0;

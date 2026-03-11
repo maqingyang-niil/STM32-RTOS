@@ -1,12 +1,11 @@
 #include "semaphore.h"
-#include "scheduler.h"
-#include <string.h>
-#include "stm32f4xx.h"
 
 extern TCB_t* SelectNextTask(void);
 extern volatile TCB_t *currentTCB;
-extern volatile TCB_t *nextTCB;
 
+/*
+必须在系统开始调度前完成
+*/
 void Sem_Init(Semaphore_t *sem,
               uint32_t initial_count,
               const char *name){
@@ -26,115 +25,118 @@ void Sem_Init(Semaphore_t *sem,
     }
 }
 
-
-//获取信号量，阻塞式
+/*
+获取信号量，阻塞式
+内部临界区操作
+*/
 bool Sem_Wait(Semaphore_t *sem){
+    uint32_t primask=__get_PRIMASK();
     __disable_irq();
 
-    //有资源
-    if (sem->count>0){
-        sem->count--;
-        __enable_irq();
-        return true;
-    }
-    //无资源，阻塞当前任务
-    else{
-        TCB_t *current=(TCB_t*)currentTCB;
-
-        if (current==NULL){
-            __enable_irq();
-            return false;
-        }
-
-        if (sem->waiting_count<MAX_TASK){
-            current->state=TASK_STATE_BLOCKED;
-            sem->waiting_list[sem->waiting_count]=current;
-            sem->waiting_count++;
-            __enable_irq();
-            nextTCB=SelectNextTask();
-            SCB->ICSR|=SCB_ICSR_PENDSVSET_Msk;
-            while(current->state==TASK_STATE_BLOCKED){
-                __WFI();
-            }
-            return true;
-        }
-        else{
-            __enable_irq();
-            return false;
-        }
-    }
-}
-
-//获取信号量，非阻塞式
-bool Sem_TryWait(Semaphore_t *sem){
-    __disable_irq();
-
-    if (sem->count>0){
-        sem->count--;
-        __enable_irq();
-        return true;
-    }
-    else{
-        __enable_irq();
+    TCB_t *current=(TCB_t*)currentTCB;
+    if (current==NULL){
+        __set_PRIMASK(primask);
         return false;
     }
-}
 
-//获取信号量，带超时
-bool Sem_WaitTimeout(Semaphore_t *sem,uint32_t timeout_ms){
-    uint32_t start_time=HAL_GetTick();
-    while(1){
-        if (Sem_TryWait(sem)){
-            return true;
-        }
-        if (HAL_GetTick()-start_time>=timeout_ms){
-            return false;
-        }
-
-        Task_Delay(1);
+    if (sem->count>0){
+        sem->count--;
+        __set_PRIMASK(primask);
+        return true;
     }
+    
+    if (sem->waiting_count>=MAX_TASK){
+        __set_PRIMASK(primask);
+        return false;
+    }
+
+    Task_SetState(current,TASK_STATE_BLOCKED);
+    sem->waiting_list[sem->waiting_count]=current;
+    sem->waiting_count++;
+    __set_PRIMASK(primask);
+    SCB->ICSR |= SCB_ICSR_PENDSVSET_Msk;
+    while(current->state==TASK_STATE_BLOCKED){
+        __WFI();
+    }
+    return true;
 }
 
-void Sem_Post(Semaphore_t *sem){
+/*
+获取信号量，非阻塞式
+内部临界区操作
+*/
+bool Sem_TryWait(Semaphore_t *sem){
+    uint32_t primask=__get_PRIMASK();
     __disable_irq();
+
+    TCB_t *current=(TCB_t*)currentTCB;
+    if (current==NULL){
+        __set_PRIMASK(primask);
+        return false;
+    }
+    
+    if (sem->count>0){
+        sem->count--;
+        __set_PRIMASK(primask);
+        return true;
+    }
+
+    __set_PRIMASK(primask);
+    return false;
+}
+
+/*
+释放信号量
+*/
+void Sem_Post(Semaphore_t *sem){
+    uint32_t primask=__get_PRIMASK();
+    __disable_irq();
+
     if (sem->waiting_count>0){
         TCB_t *task=sem->waiting_list[0];
-        task->state=TASK_STATE_READY;
 
         for (uint8_t i=0;i<sem->waiting_count-1;i++){
             sem->waiting_list[i]=sem->waiting_list[i+1];
         }
         sem->waiting_list[sem->waiting_count-1]=NULL;
         sem->waiting_count--;
-
-        if (currentTCB!=NULL){
-            if (task->priority<((TCB_t*)currentTCB)->priority){
-                nextTCB=task;
-                __enable_irq();
-                SCB->ICSR|=SCB_ICSR_PENDSVSET_Msk;
-                return;
-            }
+        Task_SetState(task,TASK_STATE_READY);
+        __set_PRIMASK(primask);
+        if (currentTCB&&task->priority<((TCB_t*)currentTCB)->priority){
+            SCB->ICSR |= SCB_ICSR_PENDSVSET_Msk;
         }
-        __enable_irq();
     }
     else{
         sem->count++;
-        __enable_irq();
+        __set_PRIMASK(primask);
     }
 }
 
+bool Sem_WaitTimeout(Semaphore_t *sem, uint32_t timeout_ms){
+    return true;
+}
+
+/*
+获取当前资源值
+内部临界区操作
+*/
 uint32_t Sem_GetValue(Semaphore_t *sem){
+    uint32_t primask=__get_PRIMASK();
     __disable_irq();
     uint32_t value=sem->count;
-    __enable_irq();
+    __set_PRIMASK(primask);
     return value;
 }
 
-
+/*
+获取等待资源的任务数量
+内部临界区操作
+*/
 uint8_t Sem_GetWaitingCount(Semaphore_t *sem){
+    uint32_t primask=__get_PRIMASK();
     __disable_irq();
     uint8_t count=sem->waiting_count;
-    __enable_irq();
+    __set_PRIMASK(primask);
     return count;
 }
 
