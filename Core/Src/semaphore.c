@@ -1,6 +1,5 @@
 #include "semaphore.h"
 
-extern TCB_t* SelectNextTask(void);
 extern volatile TCB_t *currentTCB;
 
 /*
@@ -140,3 +139,20 @@ uint8_t Sem_GetWaitingCount(Semaphore_t *sem){
     return count;
 }
 
+void Sem_Reset(Semaphore_t *sem,uint32_t new_count){
+    uint32_t primask=__get_PRIMASK();
+    __disable_irq();
+
+    while(sem->waiting_count>0){
+        TCB_t *task=sem->waiting_list[0];
+        for (uint8_t i=0;i<sem->waiting_count-1;i++){
+            sem->waiting_list[i]=sem->waiting_list[i+1];
+        }
+        sem->waiting_list[sem->waiting_count-1]=NULL;
+        sem->waiting_count--;
+        Task_SetState(task,TASK_STATE_READY);
+    }
+    
+    sem->count=new_count;
+    __set_PRIMASK(primask);
+}

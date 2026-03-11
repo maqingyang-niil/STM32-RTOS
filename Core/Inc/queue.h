@@ -4,6 +4,7 @@
 #include <stdint.h>
 #include <stdbool.h>
 #include <string.h>
+#include "scheduler.h"
 #include "semaphore.h"
 #include "stm32f4xx_hal.h"
 
@@ -17,9 +18,9 @@ typedef struct{
     volatile uint32_t tail;
     volatile uint32_t count;   //队列中已有元素的数量
 
-    Semaphore_t sem_empty;
+    Semaphore_t sem_empty;    //空槽数量
     Semaphore_t sem_full;
-    Semaphore_t sem_mutex;
+    Semaphore_t sem_mutex;    //临界区保护互斥量
     
     //DMA相关
     DMA_HandleTypeDef *hdma;
@@ -44,9 +45,9 @@ void Queue_Init(Queue_t *queue,
                 uint32_t max_items,
                 const char *name);
 
-bool Queue_Send(Queue_t *queue,const void *item,uint32_t timeout_ms);
+bool Queue_Send(Queue_t *queue,const void *item);
 
-bool Queue_Receive(Queue_t *queue,void *item,uint32_t timeout_ms);
+bool Queue_Receive(Queue_t *queue,void *item);
 
 void Queue_DMA_CpltCallback(Queue_t *queue);
 

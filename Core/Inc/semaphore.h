@@ -26,6 +26,8 @@ bool Sem_WaitTimeout(Semaphore_t *sem, uint32_t timeout_ms);
 
 void Sem_Post(Semaphore_t *sem);
 
+void Sem_Reset(Semaphore_t *sem,uint32_t new_count);
+
 uint32_t Sem_GetValue(Semaphore_t *sem);
 
 uint8_t Sem_GetWaitingCount(Semaphore_t *sem);
