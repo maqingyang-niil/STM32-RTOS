@@ -106,9 +106,7 @@ static void DelayListCheck(void){
     }
     __set_PRIMASK(primask);
 
-    if (need_immed_schedule){
-        SCB->ICSR |= SCB_ICSR_PENDSVSET_Msk;
-    }
+    if (need_immed_schedule)  SCB->ICSR |= SCB_ICSR_PENDSVSET_Msk;
 }
 
 /*
@@ -460,12 +458,19 @@ void Task_Suspend(TCB_t *tcb){
     Task_SetState(tcb,TASK_STATE_SUSPENDED);
 }
 
+/*
+挂起当前任务
+立即调度
+*/
 void Task_SuspendSelf(void){
     if (currentTCB==NULL) return;
     Task_SetState((TCB_t*)currentTCB,TASK_STATE_SUSPENDED);
     SCB->ICSR |= SCB_ICSR_PENDSVSET_Msk;
 }
 
+/*
+恢复任务，调到就绪列表中
+*/
 void Task_Resume(TCB_t *tcb){
     if (tcb==NULL) return;
     if (tcb->state!=TASK_STATE_SUSPENDED) return;
