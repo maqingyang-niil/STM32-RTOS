@@ -177,24 +177,25 @@ bool Queue_TrySend(Queue_t *queue,const void *item){
     //获取到了空闲位置的信号量
     Sem_Wait(&queue->sem_mutex);
 
-    uint8_t *src=(uint8_t*)queue->buffer+(queue->head*queue->item_size);
+    uint8_t *dest=(uint8_t*)queue->buffer+(queue->tail*queue->item_size);
+
     if (queue->hdma!=NULL
         &&queue->item_size>=QUEUE_DMA_THRESHOLD
-        &&(uint32_t)src%4==0
+        &&(uint32_t)dest%4==0
         &&(uint32_t)item%4==0
         &&queue->item_size%4==0){
-        if (!Queue_DMA_Transfer(queue,item,src,queue->item_size/4)){
-            memcpy(item,src,queue->item_size);
+        if (!Queue_DMA_Transfer(queue,dest,item,queue->item_size/4)){
+            memcpy(dest,item,queue->item_size);
         }
     }
     else{
-        memcpy(item,src,queue->item_size);
+        memcpy(dest,item,queue->item_size);
     }
-    queue->head=(queue->head+1)%queue->max_items;
-    queue->count--;
-
+    queue->tail=(queue->tail+1)%queue->max_items;
+    queue->count++;
+    
     Sem_Post(&queue->sem_mutex);
-    Sem_Post(&queue->sem_empty);
+    Sem_Post(&queue->sem_full);
 
     return true;
 }
