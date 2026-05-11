@@ -14,6 +14,8 @@ typedef struct{
     char name[16];
 }Semaphore_t;
 
+//外函数接口均保证临界区安全
+
 void Sem_Init(Semaphore_t *sem,
               uint32_t initial_count,
               const char *name);

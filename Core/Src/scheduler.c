@@ -29,7 +29,6 @@ uint32_t GetCurrentTicks(void){
 /*
 加入delay_list
 依赖调用者保证临界区
-设置加入任务的状态
 在调用这个函数之前，应当把任务唤醒的时间载入TCB
 */
 static void AddToDelayList(TCB_t *tcb){
@@ -61,7 +60,7 @@ static void RemoveFromDelayList(TCB_t *tcb){
     if (tcb==NULL || delay_list==NULL){
         return;
     }
-    // 头节点
+    // 头节点为要移除的节点
     if (delay_list==tcb){
         delay_list=tcb->next;
         tcb->next=NULL;
@@ -85,10 +84,11 @@ static void RemoveFromDelayList(TCB_t *tcb){
 static inline int32_t TickDiff(uint32_t a,uint32_t b){
     return (int32_t)(a-b);
 }
+
 /*
 检查delay_list中的任务是不是应该放出来了
 内部临界区保护操作
-供systick_handler调用
+由systick_handler调用，每毫秒执行一次
 如果有符合唤醒条件任务，将该任务加入ready list
 */
 static void DelayListCheck(void){
@@ -111,7 +111,7 @@ static void DelayListCheck(void){
 /*
 内部函数，
 将任务加入就绪链表，依赖调用者保证临界区
-插入任务时，要更新这个环形列表的头指针未知，始终指向尾节点（轮转）
+新任务被插入尾部，保证轮转调度的公平性
 由Task_SetState函数调用，严格临界区内操作
 一定确保移出后tcb->next=NULL
 */
@@ -178,6 +178,8 @@ static void RemoveFromReadyList(TCB_t *tcb){
 /*
 获取下一个任务（确保与当前任务不同）
 如果出现ready_map和ready_list不相符的情况，返回idle_tcb，which is theoretically impossible
+只转指针，不取出任务
+取出任务的操作全部由Task_SetState在严格临界区内完成
 */
 TCB_t* SelectNextTask(void){
     uint32_t primask=__get_PRIMASK();
@@ -451,9 +453,12 @@ __attribute__((naked)) void PendSV_Handler(void)
 */
 void Task_Suspend(TCB_t *tcb){
     if (tcb==NULL)  return;
-    if ((TCB_t*)currentTCB==tcb)  return;
-    if (tcb->state==TASK_STATE_SUSPENDED)  return;
-    Task_SetState(tcb,TASK_STATE_SUSPENDED);
+    uint32_t primask=__get_PRIMASK();
+    __disable_irq();
+    if ((TCB_t*)currentTCB!=tcb&&tcb->state!=TASK_STATE_SUSPENDED){
+        Task_SetState(tcb,TASK_STATE_SUSPENDED);
+    }
+    __set_PRIMASK(primask);
 }
 
 /*
@@ -471,9 +476,10 @@ void Task_SuspendSelf(void){
 */
 void Task_Resume(TCB_t *tcb){
     if (tcb==NULL) return;
-    if (tcb->state!=TASK_STATE_SUSPENDED) return;
-    Task_SetState(tcb,TASK_STATE_READY);
-    if (currentTCB && tcb->priority<((TCB_t*)currentTCB)->priority){
-        SCB->ICSR |= SCB_ICSR_PENDSVSET_Msk;
+    uint32_t primask=__get_PRIMASK();
+    __disable_irq();
+    if ((TCB_t*)currentTCB!=tcb&&tcb->state!=TASK_STATE_READY){
+        Task_SetState(tcb,TASK_STATE_READY);
     }
+    __set_PRIMASK(primask);
 }

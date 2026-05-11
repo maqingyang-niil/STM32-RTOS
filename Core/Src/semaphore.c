@@ -90,7 +90,7 @@ bool Sem_TryWait(Semaphore_t *sem){
 void Sem_Post(Semaphore_t *sem){
     uint32_t primask=__get_PRIMASK();
     __disable_irq();
-
+    // FIFO唤醒
     if (sem->waiting_count>0){
         TCB_t *task=sem->waiting_list[0];
 

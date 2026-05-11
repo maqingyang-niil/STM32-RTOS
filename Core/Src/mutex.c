@@ -1,6 +1,5 @@
 #include "mutex.h"
-#include <stdint.h>
-#include "scheduler.h"
+
 
 extern volatile TCB_t *currentTCB;
 extern TCB_t* SelectNextTask(void);
@@ -15,9 +14,6 @@ void Mutex_Init(Mutex_t *mutex,const char *name){
     for (int i=0;i<MAX_TASK;i++){
         mutex->waiting_list[i]=NULL;
     }
-    mutex->lock_times=0;
-    mutex->contention_count=0;
-    mutex->max_wait_time_ms=0;
 
     if (name){
         strncpy(mutex->name,name,sizeof(mutex->name)-1);
@@ -46,7 +42,7 @@ bool Mutex_Lock(Mutex_t *mutex,uint32_t timeout_ms){
         mutex->owner=current;
         mutex->original_priority=current->priority;
         mutex->lock_count=1;
-        mutex->lock_times++;
+
         __enable_irq();
         return true;
     }
@@ -57,7 +53,6 @@ bool Mutex_Lock(Mutex_t *mutex,uint32_t timeout_ms){
         return true;
     }
     //情况3，被其他任务占用
-    mutex->contention_count++;
 
     if (current->priority<mutex->owner->priority){
         //临时提升所有者优先级,确保拿着锁的任务尽快尽快运行完
@@ -105,9 +100,7 @@ bool Mutex_Lock(Mutex_t *mutex,uint32_t timeout_ms){
             __WFI();
         }
         uint32_t wait_time=HAL_GetTick()-start_time;
-        if (wait_time>mutex->max_wait_time_ms){
-            mutex->max_wait_time_ms=wait_time;
-        }
+
         return true;
     }
     else{

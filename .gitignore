@@ -42,3 +42,5 @@ Thumbs.db
 # 如果你用 CubeMX 但不用 CubeIDE
 .metadata/
 .settings/
+**/.claude/
+MDK-ARM/.eide/
