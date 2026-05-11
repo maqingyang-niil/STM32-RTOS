@@ -34,4 +34,6 @@ uint32_t Sem_GetValue(Semaphore_t *sem);
 
 uint8_t Sem_GetWaitingCount(Semaphore_t *sem);
 
+void Sem_RemoveWaiting(void *sem_void,TCB_t *tcb);
+
 #endif /* __SEMAPHORE_H */

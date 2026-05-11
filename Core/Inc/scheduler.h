@@ -14,6 +14,8 @@ typedef struct TCB_t{
     uint32_t wake_ticks;                 //唤醒时间
     char name[16];
     struct TCB_t *next;                  //同优先级任务链表
+    void *waiting_on;                    //等待信号量的是否被正常唤醒标志
+    void (*unblock_cleanup)(void*,struct TCB_t *);
 } TCB_t;
 
 extern volatile TCB_t *currentTCB;

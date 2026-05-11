@@ -299,6 +299,8 @@ void Scheduler_AddTask(TCB_t *tcb,
     tcb->wake_ticks=0;
     tcb->next=NULL;
     tcb->state=TASK_STATE_UNINIT;
+    tcb->waiting_on=NULL;
+    tcb->unblock_cleanup=NULL;
     if (name){
         strncpy(tcb->name,name,sizeof(tcb->name)-1);
         tcb->name[sizeof(tcb->name)-1]='\0';
@@ -453,11 +455,19 @@ __attribute__((naked)) void PendSV_Handler(void)
 */
 void Task_Suspend(TCB_t *tcb){
     if (tcb==NULL)  return;
+
     uint32_t primask=__get_PRIMASK();
     __disable_irq();
-    if ((TCB_t*)currentTCB!=tcb&&tcb->state!=TASK_STATE_SUSPENDED){
-        Task_SetState(tcb,TASK_STATE_SUSPENDED);
+
+    if ((TCB_t*)currentTCB==tcb||tcb->state==TASK_STATE_SUSPENDED){
+        __set_PRIMASK(primask);
+        return;
     }
+
+    if (tcb->state==TASK_STATE_BLOCKED&&tcb->unblock_cleanup!=NULL){
+        tcb->unblock_cleanup(tcb->waiting_on,tcb);
+    }
+    Task_SetState(tcb,TASK_STATE_SUSPENDED);
     __set_PRIMASK(primask);
 }
 
