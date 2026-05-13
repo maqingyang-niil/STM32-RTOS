@@ -28,6 +28,7 @@ extern volatile uint32_t current_ticks;
 #define TASK_STATE_UNINIT     0xFF
 
 #define MAX_TASK          32
+#define MAX_TASK_4_MUTEX  MAX_TASK-1
 #define TIME_SLICE_MS     10      //时间片长度
 
 #define PRIORITY_IDLE     31      //任何任务的优先级都要比idle_task高
@@ -63,5 +64,8 @@ void Task_Suspend(TCB_t *tcb);
 void Task_SuspendSelf(void);
 
 void Task_Resume(TCB_t *tcb);
+
+//只能给mutex使用
+void Task_ChangePriority(TCB_t *tcb,uint8_t new_priority);
 
 #endif /* __SCHEDULER_H */

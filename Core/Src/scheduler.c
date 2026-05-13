@@ -488,8 +488,43 @@ void Task_Resume(TCB_t *tcb){
     if (tcb==NULL) return;
     uint32_t primask=__get_PRIMASK();
     __disable_irq();
-    if ((TCB_t*)currentTCB!=tcb&&tcb->state!=TASK_STATE_READY){
+    if ((TCB_t*)currentTCB!=tcb&&tcb->state==TASK_STATE_SUSPENDED){
         Task_SetState(tcb,TASK_STATE_READY);
+        __set_PRIMASK(primask);
+        if ((TCB_t*)currentTCB&&tcb->priority<((TCB_t*)currentTCB)->priority){
+            SCB->ICSR |= SCB_ICSR_PENDSVSET_Msk;
+        }
+        return;
     }
+    __set_PRIMASK(primask);
+}
+
+/*
+只给mutex的优先级继承功能使用
+内部临界区保护
+*/
+void Task_ChangePriority(TCB_t *tcb,uint8_t new_priority){
+    if (tcb==NULL) return;
+
+    uint32_t primask=__get_PRIMASK();
+    __disable_irq();
+
+    if (tcb->priority==new_priority){
+        __set_PRIMASK(primask);
+        return;
+    }
+
+    bool is_ready=(tcb->state==TASK_STATE_READY);
+
+    if (is_ready){
+        RemoveFromReadyList(tcb);
+    }
+
+    tcb->priority=new_priority;
+
+    if (is_ready){
+        AddToReadyList(tcb);
+    }
+
     __set_PRIMASK(primask);
 }
