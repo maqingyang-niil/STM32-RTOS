@@ -35,6 +35,7 @@ void DMA2_Stream0_IRQHandler(void){
 void HAL_DMA_XferCpltCallback(DMA_HandleTypeDef *hdma){
   Queue_t *queue=(Queue_t *)hdma->Parent;
   if (queue!=NULL){
+    queue->dma_error=false;//传输成功
     Queue_DMA_CpltCallback(queue);
   }
 }
@@ -43,8 +44,8 @@ void HAL_DMA_XferCpltCallback(DMA_HandleTypeDef *hdma){
 void HAL_DMA_XferErrorCallback(DMA_HandleTypeDef *hdma){
   Queue_t *queue=(Queue_t *)hdma->Parent;
   if (queue!=NULL){
-    queue->dma_busy=false;//传输失败，重置DMA状态
-    Sem_Post(&queue->sem_dma_done);//通知等待的任务
+    queue->dma_error=true;//设置DMA错误标志
+    Queue_DMA_CpltCallback(queue);//通知等待的任务
   }
 }
 

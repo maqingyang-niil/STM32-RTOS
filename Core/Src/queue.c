@@ -28,6 +28,7 @@ void Queue_Init_DMA(Queue_t *queue,
     //DMA初始化
     queue->hdma=hdma;
     queue->dma_busy=false;
+    queue->dma_error=false;
     queue->count=0;
 
     if (hdma!=NULL){
@@ -80,10 +81,14 @@ static bool Queue_DMA_Transfer(Queue_t *queue,
     信号量记数为0，当前任务被阻塞，当DMA传输完毕，触发中断，进入DMA回调函数，在回调函数中调用Post将
     这个信号量的记数设置为1，然后触发调度，该任务被唤醒，继续执行
     */
-    Sem_Wait(&queue->sem_dma_done);
+    while(Sem_Wait(&queue->sem_dma_done)==false);
 
+    bool success=!queue->dma_error;//传输成功与否取决于DMA错误标志
+
+    //重置DMA标志
+    queue->dma_error=false;
     queue->dma_busy=false;
-    return true;
+    return success;
 }
 
 /*
@@ -91,12 +96,19 @@ static bool Queue_DMA_Transfer(Queue_t *queue,
 依靠mutex获取临界区
 */
 bool Queue_Send(Queue_t *queue,const void *item){
-    if (item==NULL){
+    if (item==NULL||queue==NULL){
         return false;
     }
+
+    if (!Sem_Wait(&queue->sem_empty)){
+        return false;
+
+    }
     
-    Sem_Wait(&queue->sem_empty);
-    Sem_Wait(&queue->sem_mutex);//进入临界区
+    if (Sem_Wait(&queue->sem_mutex)==false){
+        Sem_Post(&queue->sem_empty);
+        return false;
+    }
 
     uint8_t *dest=(uint8_t*)queue->buffer+(queue->tail*queue->item_size);
 
@@ -105,6 +117,7 @@ bool Queue_Send(Queue_t *queue,const void *item){
         &&(uint32_t)dest%4==0
         &&(uint32_t)item%4==0
         &&queue->item_size%4==0){
+        //满足使用DMA的条件，尝试使用DMA传输，如果失败了再使用CPU memcpy
         if (!Queue_DMA_Transfer(queue,dest,item,queue->item_size/4)){
             memcpy(dest,item,queue->item_size);
         }
@@ -126,12 +139,18 @@ bool Queue_Send(Queue_t *queue,const void *item){
 依靠mutex获取临界区
 */
 bool Queue_Receive(Queue_t *queue,void *item){
-    if (item==NULL){
+    if (item==NULL||queue==NULL){
         return false;
     }
 
-    Sem_Wait(&queue->sem_full);
-    Sem_Wait(&queue->sem_mutex);
+    if (Sem_Wait(&queue->sem_full)==false){
+        return false;
+    }
+
+    if (Sem_Wait(&queue->sem_mutex)==false){
+        Sem_Post(&queue->sem_full);
+        return false;
+    }
     
     uint8_t *src=(uint8_t*)queue->buffer+(queue->head*queue->item_size);
     if (queue->hdma!=NULL
@@ -164,9 +183,10 @@ void Queue_DMA_CpltCallback(Queue_t *queue){
 
 /*
 发送消息，非阻塞式
+Trywait的是空闲位置
 */
 bool Queue_TrySend(Queue_t *queue,const void *item){
-    if (item==NULL){
+    if (item==NULL||queue==NULL){
         return false;
     }
     
@@ -175,7 +195,10 @@ bool Queue_TrySend(Queue_t *queue,const void *item){
         return false;
     }
     //获取到了空闲位置的信号量
-    Sem_Wait(&queue->sem_mutex);
+    if (!Sem_Wait(&queue->sem_mutex)){
+        Sem_Post(&queue->sem_empty);
+        return false;
+    }
 
     uint8_t *dest=(uint8_t*)queue->buffer+(queue->tail*queue->item_size);
 
@@ -203,7 +226,7 @@ bool Queue_TrySend(Queue_t *queue,const void *item){
 
 //接收消息，非阻塞
 bool Queue_TryReceive(Queue_t *queue,void *item){
-    if (item==NULL){
+    if (item==NULL||queue==NULL){
         return false;
     }
 
@@ -211,7 +234,10 @@ bool Queue_TryReceive(Queue_t *queue,void *item){
         return false;
     }
 
-    Sem_Wait(&queue->sem_mutex);
+    if (!Sem_Wait(&queue->sem_mutex)){
+        Sem_Post(&queue->sem_full);
+        return false;
+    }
 
     uint8_t *src=(uint8_t*)queue->buffer+(queue->head*queue->item_size);
     if (queue->hdma!=NULL
@@ -240,11 +266,13 @@ bool Queue_TryReceive(Queue_t *queue,void *item){
 不使用DMA
 */
 bool Queue_Peek(Queue_t *queue,void *item){
-    if (item==NULL){
+    if (item==NULL||queue==NULL){
         return false;
     }
 
-    Sem_Wait(&queue->sem_mutex);
+    if (!Sem_Wait(&queue->sem_mutex)){
+        return false;
+    }
 
     if (queue->count==0){
         Sem_Post(&queue->sem_mutex);
@@ -259,18 +287,12 @@ bool Queue_Peek(Queue_t *queue,void *item){
 
 //获取队列中消息中的数量
 uint32_t Queue_GetCount(Queue_t *queue){
-    Sem_Wait(&queue->sem_mutex);
-    uint32_t count=queue->count;
-    Sem_Post(&queue->sem_mutex);
-    return count;
+    return Sem_GetValue(&queue->sem_full);
 }
 
 //获取队列中剩余空间的数量
 uint32_t Queue_GetSpace(Queue_t *queue){
-    Sem_Wait(&queue->sem_mutex);
-    uint32_t space=queue->max_items-queue->count;
-    Sem_Post(&queue->sem_mutex);
-    return space;
+    return Sem_GetValue(&queue->sem_empty);
 }
 
 //判断队列是否为空
@@ -287,7 +309,14 @@ bool Queue_IsFull(Queue_t *queue){
 调用该函数时，确保没有任务在等待这个队列，which is really hard
 */
 void Queue_Flush(Queue_t *queue){
-    Sem_Wait(&queue->sem_mutex);
+    if (queue==NULL){
+        return;
+    }
+    
+    if (!Sem_Wait(&queue->sem_mutex)){
+        return;
+    }
+
     queue->head=0;
     queue->tail=0;
     queue->count=0;

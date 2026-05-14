@@ -18,14 +18,15 @@ typedef struct{
     volatile uint32_t tail;
     volatile uint32_t count;   //队列中已有元素的数量
 
-    Semaphore_t sem_empty;    //空槽数量
-    Semaphore_t sem_full;
+    Semaphore_t sem_empty;    //还有多少空槽可以写入
+    Semaphore_t sem_full;     //已有多少数据可以读取
     Semaphore_t sem_mutex;    //临界区保护互斥量
     
     //DMA相关
     DMA_HandleTypeDef *hdma;
     Semaphore_t sem_dma_done;
     volatile bool dma_busy;
+    volatile bool dma_error;
 
     char name[16];
 }Queue_t;

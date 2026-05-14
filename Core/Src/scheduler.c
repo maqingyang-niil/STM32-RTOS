@@ -482,7 +482,10 @@ void Task_SuspendSelf(void){
 }
 
 /*
-恢复任务，调到就绪列表中
+恢复任务，SUSPENDED->READY
+如果被恢复的任务优先级高于当前任务，触发调度
+内部临界区保护
+载入ready list
 */
 void Task_Resume(TCB_t *tcb){
     if (tcb==NULL) return;
