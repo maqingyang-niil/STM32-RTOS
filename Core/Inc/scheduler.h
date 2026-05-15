@@ -21,10 +21,11 @@ typedef struct TCB_t{
 extern volatile TCB_t *currentTCB;
 extern volatile uint8_t isFirstSwitch;
 extern volatile uint32_t current_ticks;
-#define TASK_STATE_READY      0
-#define TASK_STATE_SUSPENDED  1
-#define TASK_STATE_BLOCKED    2
-#define TASK_STATE_DELAYED    3
+#define TASK_STATE_READY              0
+#define TASK_STATE_SUSPENDED          1
+#define TASK_STATE_BLOCKED            2
+#define TASK_STATE_DELAYED            3
+#define TASK_STATE_BLOCKED_TIMEOUT    4
 #define TASK_STATE_UNINIT     0xFF
 
 #define MAX_TASK          32

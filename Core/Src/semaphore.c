@@ -30,6 +30,8 @@ void Sem_Init(Semaphore_t *sem,
 内部临界区操作
 */
 bool Sem_Wait(Semaphore_t *sem){
+    if (sem==NULL) return false;
+
     uint32_t primask=__get_PRIMASK();
     __disable_irq();
 
@@ -86,6 +88,7 @@ bool Sem_Wait(Semaphore_t *sem){
 内部临界区操作
 */
 bool Sem_TryWait(Semaphore_t *sem){
+    if (sem==NULL) return false;
     uint32_t primask=__get_PRIMASK();
     __disable_irq();
 
@@ -135,6 +138,48 @@ void Sem_Post(Semaphore_t *sem){
 }
 
 bool Sem_WaitTimeout(Semaphore_t *sem, uint32_t timeout_ms){
+    if (sem==NULL||timeout_ms==0) return false;
+
+    uint32_t primask=__get_PRIMASK();
+    __disable_irq();
+
+    TCB_t *current=(TCB_t*)currentTCB;
+    if (current==NULL){
+        __set_PRIMASK(primask);
+        return false;
+    }
+
+    if (sem->count>0){
+        sem->count--;
+        __set_PRIMASK(primask);
+        return true;
+    }
+    
+    if (sem->waiting_count>=MAX_TASK){
+        __set_PRIMASK(primask);
+        return false;
+    }
+
+    current->waiting_on=sem;
+    current->unblock_cleanup=Sem_RemoveWaiting;
+    sem->waiting_list[sem->waiting_count]=current;
+    sem->waiting_count++;
+
+    current->wake_ticks=timeout_ms+GetCurrentTicks();
+    Task_SetState(current,TASK_STATE_BLOCKED_TIMEOUT);
+    __set_PRIMASK(primask);
+    SCB->ICSR |= SCB_ICSR_PENDSVSET_Msk;
+
+    while(current->state==TASK_STATE_BLOCKED_TIMEOUT
+        ||current->state==TASK_STATE_SUSPENDED){
+        __WFI();
+    }
+
+    if (current->waiting_on!=NULL){
+        current->waiting_on=NULL;
+        current->unblock_cleanup=NULL;
+        return false;
+    }
     return true;
 }
 

@@ -68,7 +68,4 @@ bool Queue_IsFull(Queue_t *queue);
 
 void Queue_Flush(Queue_t *queue);
 
-//void Queue_PrintStatus(Queue_t *queue);
-
-
 #endif /* __QUEUE_H */

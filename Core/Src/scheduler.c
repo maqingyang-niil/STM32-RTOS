@@ -97,7 +97,11 @@ static void DelayListCheck(void){
     bool need_immed_schedule=false;
     while(delay_list!=NULL && TickDiff(current_ticks,delay_list->wake_ticks)>=0){//满足条件，该移出delay_list
         TCB_t *tcb=delay_list;
-        // Task_SetState 会自己从 delay_list 摘除再加入 ready_list
+        if (tcb->state==TASK_STATE_BLOCKED_TIMEOUT){
+            if (tcb->unblock_cleanup!=NULL){
+                tcb->unblock_cleanup(tcb->waiting_on,tcb);
+            }
+        }
         Task_SetState(tcb,TASK_STATE_READY);
         if (currentTCB && tcb->priority<((TCB_t*)currentTCB)->priority){
             need_immed_schedule=true;
@@ -217,10 +221,11 @@ void Task_SetState(TCB_t *tcb,uint8_t new_state){
     //离开旧状态
     if (tcb->state==TASK_STATE_READY)    RemoveFromReadyList(tcb);
     if (tcb->state==TASK_STATE_DELAYED)  RemoveFromDelayList(tcb);
+    if (tcb->state==TASK_STATE_BLOCKED_TIMEOUT)  RemoveFromDelayList(tcb);
     //进入新状态
     if (new_state==TASK_STATE_READY)     AddToReadyList(tcb);
     if (new_state==TASK_STATE_DELAYED)   AddToDelayList(tcb);
-
+    if (new_state==TASK_STATE_BLOCKED_TIMEOUT) AddToDelayList(tcb);
     tcb->state=new_state;
     __set_PRIMASK(primask);
 }
@@ -464,7 +469,9 @@ void Task_Suspend(TCB_t *tcb){
         return;
     }
 
-    if (tcb->state==TASK_STATE_BLOCKED&&tcb->unblock_cleanup!=NULL){
+    if ((tcb->state==TASK_STATE_BLOCKED||
+         tcb->state==TASK_STATE_BLOCKED_TIMEOUT)&&
+         tcb->unblock_cleanup!=NULL){
         tcb->unblock_cleanup(tcb->waiting_on,tcb);
     }
     Task_SetState(tcb,TASK_STATE_SUSPENDED);
