@@ -96,16 +96,14 @@ static bool Queue_DMA_Transfer(Queue_t *queue,
 依靠mutex获取临界区
 */
 bool Queue_Send(Queue_t *queue,const void *item){
-    if (item==NULL||queue==NULL){
-        return false;
-    }
+    if (item==NULL||queue==NULL) return false;
 
     if (!Sem_Wait(&queue->sem_empty)){
         return false;
 
     }
     
-    if (Sem_Wait(&queue->sem_mutex)==false){
+    if (!Sem_Wait(&queue->sem_mutex)){
         Sem_Post(&queue->sem_empty);
         return false;
     }
@@ -139,15 +137,84 @@ bool Queue_Send(Queue_t *queue,const void *item){
 依靠mutex获取临界区
 */
 bool Queue_Receive(Queue_t *queue,void *item){
-    if (item==NULL||queue==NULL){
+    if (item==NULL||queue==NULL) return false;
+    
+    if (!Sem_Wait(&queue->sem_full)){
         return false;
     }
 
-    if (Sem_Wait(&queue->sem_full)==false){
+    if (!Sem_Wait(&queue->sem_mutex)){
+        Sem_Post(&queue->sem_full);
+        return false;
+    }
+    
+    uint8_t *src=(uint8_t*)queue->buffer+(queue->head*queue->item_size);
+    if (queue->hdma!=NULL
+        &&queue->item_size>=QUEUE_DMA_THRESHOLD
+        &&(uint32_t)src%4==0
+        &&(uint32_t)item%4==0
+        &&queue->item_size%4==0){
+        if (!Queue_DMA_Transfer(queue,item,src,queue->item_size/4)){
+            memcpy(item,src,queue->item_size);
+        }
+    }
+    else{
+        memcpy(item,src,queue->item_size);
+    }
+    queue->head=(queue->head+1)%queue->max_items;
+    queue->count--;
+
+    Sem_Post(&queue->sem_mutex);
+    Sem_Post(&queue->sem_empty);
+
+    return true;
+}
+
+bool Queue_SendTimeout(Queue_t *queue,const void *item,uint32_t timeout_ms){
+    if (item==NULL||queue==NULL) return false;
+    
+    
+    if (!Sem_WaitTimeout(&queue->sem_empty,timeout_ms)){
+        return false;
+    }
+    
+    if (!Sem_Wait(&queue->sem_mutex)){
+        Sem_Post(&queue->sem_empty);
         return false;
     }
 
-    if (Sem_Wait(&queue->sem_mutex)==false){
+    uint8_t *dest=(uint8_t*)queue->buffer+(queue->tail*queue->item_size);
+
+    if (queue->hdma!=NULL
+        &&queue->item_size>=QUEUE_DMA_THRESHOLD
+        &&(uint32_t)dest%4==0
+        &&(uint32_t)item%4==0
+        &&queue->item_size%4==0){
+        //满足使用DMA的条件，尝试使用DMA传输，如果失败了再使用CPU memcpy
+        if (!Queue_DMA_Transfer(queue,dest,item,queue->item_size/4)){
+            memcpy(dest,item,queue->item_size);
+        }
+    }
+    else{
+        memcpy(dest,item,queue->item_size);
+    }
+    queue->tail=(queue->tail+1)%queue->max_items;
+    queue->count++;
+    
+    Sem_Post(&queue->sem_mutex);
+    Sem_Post(&queue->sem_full);
+
+    return true;
+}
+
+bool Queue_ReceiveTimeout(Queue_t *queue,void *item,uint32_t timeout_ms){
+    if (item==NULL||queue==NULL) return false;
+
+    if (!Sem_WaitTimeout(&queue->sem_full,timeout_ms)){
+        return false;
+    }
+
+    if (!Sem_Wait(&queue->sem_mutex)){
         Sem_Post(&queue->sem_full);
         return false;
     }

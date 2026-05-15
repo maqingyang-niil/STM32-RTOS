@@ -19,6 +19,8 @@ void Mutex_Init(Mutex_t *mutex,const char *name);
 
 bool Mutex_Lock(Mutex_t *mutex);
 
+bool Mutex_LockTimeout(Mutex_t *mutex,uint32_t timeout_ms);
+
 bool Mutex_Unlock(Mutex_t *mutex);
 
 bool Mutex_TryLock(Mutex_t *mutex);

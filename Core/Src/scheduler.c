@@ -348,9 +348,7 @@ void Scheduler_Start(void){
 /*
 时间到了只触发调度
 */
-void SysTick_Handler(void){
-    HAL_IncTick();
-    
+void SysTick_Handler(void){    
     //记录全局时间
     current_ticks++;
 
@@ -457,6 +455,9 @@ __attribute__((naked)) void PendSV_Handler(void)
 挂起任务
 不能自己挂起自己
 内部临界区保护
+如果任务在等待信号量，清除等待队列中的该任务...
+...但是waiting_on不修改，为的是区分判断信号量是...
+...被正常唤醒还是被挂起后误唤醒
 */
 void Task_Suspend(TCB_t *tcb){
     if (tcb==NULL)  return;
@@ -469,6 +470,10 @@ void Task_Suspend(TCB_t *tcb){
         return;
     }
 
+    /*
+    因为semaphore和mutex等待的任务被挂起
+    清除等待队列中对应的任务
+    */
     if ((tcb->state==TASK_STATE_BLOCKED||
          tcb->state==TASK_STATE_BLOCKED_TIMEOUT)&&
          tcb->unblock_cleanup!=NULL){

@@ -70,8 +70,8 @@ bool Sem_Wait(Semaphore_t *sem){
     }
     
     /*
-    情况1：被POST正常唤醒
-    情况2：被SUSPEND->RESUME唤醒
+    情况1：被POST正常唤醒，waiting_on被Sem_Post设为NULL
+    情况2：被SUSPEND->RESUME唤醒，waiting_on仍然指向信号量
     进入if后，说明是情况2，等待标志被清除，获取不到资源，返回false
     */
     if (current->waiting_on!=NULL){

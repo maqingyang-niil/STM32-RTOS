@@ -50,6 +50,10 @@ bool Queue_Send(Queue_t *queue,const void *item);
 
 bool Queue_Receive(Queue_t *queue,void *item);
 
+bool Queue_SendTimeout(Queue_t *queue,const void *item,uint32_t timeout_ms);
+
+bool Queue_ReceiveTimeout(Queue_t *queue,void *item,uint32_t timeout_ms);
+
 void Queue_DMA_CpltCallback(Queue_t *queue);
 
 bool Queue_TrySend(Queue_t *queue,const void *item);

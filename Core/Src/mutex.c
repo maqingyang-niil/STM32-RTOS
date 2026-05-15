@@ -21,6 +21,9 @@ void Mutex_Init(Mutex_t *mutex,const char *name){
     }
 }
 
+/*
+从mutex的等待队列中移除指定任务
+*/
 void Mutex_RemoveWaiting(void *mutex_void,TCB_t *tcb){
     Mutex_t *mutex=(Mutex_t*)mutex_void;
     for (uint8_t i=0;i<mutex->waiting_count;i++){
@@ -92,6 +95,71 @@ bool Mutex_Lock(Mutex_t *mutex){
     }
     else{
         //等待队列已满
+        __set_PRIMASK(primask);
+        return false;
+    }
+}
+
+bool Mutex_LockTimeout(Mutex_t *mutex,uint32_t timeout_ms){
+    if (mutex==NULL) return false;
+
+    uint32_t primask=__get_PRIMASK();
+    __disable_irq();
+
+    TCB_t *current=(TCB_t*)currentTCB;
+
+    if (current==NULL){
+        __set_PRIMASK(primask);
+        return false;
+    }
+
+    if (mutex->owner==NULL){
+        mutex->owner=current;
+        mutex->original_priority=current->priority;
+        mutex->lock_count=1;
+        __set_PRIMASK(primask);
+        return true;
+    }
+
+    if (mutex->owner==current){
+        mutex->lock_count++;
+        __set_PRIMASK(primask);
+        return true;
+    }
+
+    if (timeout_ms==0){
+        __set_PRIMASK(primask);
+        return false;
+    }
+
+    if (current->priority<mutex->owner->priority){
+        Task_ChangePriority(mutex->owner,current->priority);
+    }
+
+    if (mutex->waiting_count<MAX_TASK_4_MUTEX){
+        current->waiting_on=mutex;
+        current->unblock_cleanup=Mutex_RemoveWaiting;
+
+        mutex->waiting_list[mutex->waiting_count]=current;
+        mutex->waiting_count++;
+
+        current->wake_ticks=timeout_ms+GetCurrentTicks();
+        Task_SetState(current,TASK_STATE_BLOCKED_TIMEOUT);
+        __set_PRIMASK(primask);
+        SCB->ICSR|=SCB_ICSR_PENDSVSET_Msk;
+        while(current->state==TASK_STATE_BLOCKED_TIMEOUT||
+              current->state==TASK_STATE_SUSPENDED){
+            __WFI();
+        }
+
+        if (current->waiting_on!=NULL){
+            current->waiting_on=NULL;
+            current->unblock_cleanup=NULL;
+            return false;
+        }
+        return true;
+    }
+    else{
         __set_PRIMASK(primask);
         return false;
     }
