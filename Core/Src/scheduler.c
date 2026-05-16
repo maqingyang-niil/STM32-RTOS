@@ -19,6 +19,10 @@ static TCB_t *delay_list=NULL;                    //延迟链表
 #define CLEAR_READY_BIT(priority)  (ready_bitmap&=~(1U<<(priority)))
 #define IS_READY_BIT_SET(priority) (ready_bitmap&(1U<<(priority)))
 
+//函数声明
+static void Stack_CheckCurrent(void);
+
+
 /*
 获取当前时钟计数值
 */
