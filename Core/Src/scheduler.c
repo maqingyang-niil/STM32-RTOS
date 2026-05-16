@@ -318,6 +318,9 @@ void Scheduler_AddTask(TCB_t *tcb,
     tcb->unblock_cleanup=NULL;
     tcb->stack_base=stack;
     tcb->stack_size=stack_size;
+    tcb->wait_bits=0;
+    tcb->wait_mode=0;
+    tcb->wait_clear=0;
 
     if (name){
         strncpy(tcb->name,name,sizeof(tcb->name)-1);

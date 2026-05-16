@@ -18,6 +18,10 @@ typedef struct TCB_t{
     void (*unblock_cleanup)(void*,struct TCB_t *);
     uint32_t *stack_base;                //栈底地址，用于检测栈溢出
     uint32_t stack_size;                 //栈大小
+
+    uint32_t wait_bits;                  //等待的事件位
+    uint8_t wait_mode;                   //等待模式，0=等待任意，1=等待全部
+    uint8_t wait_clear;                  //满足后是否自动清除
 } TCB_t;
 
 extern volatile TCB_t *currentTCB;
@@ -31,15 +35,19 @@ extern volatile uint32_t current_ticks;
 #define TASK_STATE_UNINIT     0xFF
 
 #define MAX_TASK          32
-#define MAX_TASK_4_MUTEX  MAX_TASK-1
+#define MAX_TASK_4_MUTEX  (MAX_TASK-1)
+#define MAX_TASK_4_EVENT_GROUPS (MAX_TASK-1)
 #define TIME_SLICE_MS     10      //时间片长度
 
 #define PRIORITY_IDLE     31      //任何任务的优先级都要比idle_task高
 #define PRIORITY_LEVELS   32      //优先级级数
 
 #define IDLE_STACK_SIZE   64      //空闲任务栈大小
-#define STACK_GUARD_MAGIC 0xDEADBEFF  //栈溢出检测魔数，放在栈底，正常情况下不应该被覆盖
-#define STACK_GUARD_WORDS 4       //栈溢出检测保护字数量，放在栈底，正常情况下不应该被覆盖
+#define STACK_GUARD_MAGIC 0xDEADBEEF  //栈溢出检测魔数，栈底，不应覆盖
+#define STACK_GUARD_WORDS 4       //栈溢出检测保护字数量，栈底，不应覆盖
+
+#define EVENT_WAIT_ANY 0          //等待事件中的任意一个事件发生
+#define EVENT_WAIT_ALL 1          //等待事件中的所有事件发生
 
 void Scheduler_Init(void);
 
@@ -70,7 +78,7 @@ void Task_SuspendSelf(void);
 
 void Task_Resume(TCB_t *tcb);
 
-//只能给mutex使用
+//仅在mutex的优先级继承功能中使用
 void Task_ChangePriority(TCB_t *tcb,uint8_t new_priority);
 
 
