@@ -16,6 +16,8 @@ typedef struct TCB_t{
     struct TCB_t *next;                  //同优先级任务链表
     void *waiting_on;                    //等待信号量的是否被正常唤醒标志
     void (*unblock_cleanup)(void*,struct TCB_t *);
+    uint32_t *stack_base;                //栈底地址，用于检测栈溢出
+    uint32_t stack_size;                 //栈大小
 } TCB_t;
 
 extern volatile TCB_t *currentTCB;
@@ -36,6 +38,8 @@ extern volatile uint32_t current_ticks;
 #define PRIORITY_LEVELS   32      //优先级级数
 
 #define IDLE_STACK_SIZE   64      //空闲任务栈大小
+#define STACK_GUARD_MAGIC 0xDEADBEFF  //栈溢出检测魔数，放在栈底，正常情况下不应该被覆盖
+#define STACK_GUARD_WORDS 4       //栈溢出检测保护字数量，放在栈底，正常情况下不应该被覆盖
 
 void Scheduler_Init(void);
 
@@ -68,5 +72,6 @@ void Task_Resume(TCB_t *tcb);
 
 //只能给mutex使用
 void Task_ChangePriority(TCB_t *tcb,uint8_t new_priority);
+
 
 #endif /* __SCHEDULER_H */

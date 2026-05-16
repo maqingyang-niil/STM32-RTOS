@@ -268,7 +268,7 @@ void Scheduler_Init(void){
 内部局部临界区保护
 */
 void Scheduler_AddTask(TCB_t *tcb,
-                       uint32_t *stack,
+                       uint32_t *stack, //传入数组的地址
                        uint32_t stack_size,
                        void (*taskFunc)(void),
                        uint8_t priority,
@@ -279,6 +279,12 @@ void Scheduler_AddTask(TCB_t *tcb,
     if (priority>=PRIORITY_LEVELS){
         priority=PRIORITY_LEVELS-2;//任何任务的优先级都要比idle task的优先级高
     }
+
+    //栈溢出检测魔数
+    for (uint8_t i=0;i<STACK_GUARD_WORDS;i++){
+        stack[i]=STACK_GUARD_MAGIC;
+    }
+    
     uint32_t *stk=&stack[stack_size];
     *(--stk)=0x01000000;          // xPSR
     *(--stk)=(uint32_t)taskFunc;  // PC
@@ -306,6 +312,9 @@ void Scheduler_AddTask(TCB_t *tcb,
     tcb->state=TASK_STATE_UNINIT;
     tcb->waiting_on=NULL;
     tcb->unblock_cleanup=NULL;
+    tcb->stack_base=stack;
+    tcb->stack_size=stack_size;
+
     if (name){
         strncpy(tcb->name,name,sizeof(tcb->name)-1);
         tcb->name[sizeof(tcb->name)-1]='\0';
@@ -351,9 +360,11 @@ void Scheduler_Start(void){
 void SysTick_Handler(void){    
     //记录全局时间
     current_ticks++;
-
+    //延迟列表检查
     DelayListCheck();
-
+    //当前任务栈溢出检查
+    Stack_CheckCurrent();
+    //时间片计数
     tick_count++;
     if (tick_count>=TIME_SLICE_MS){
         tick_count=0;
@@ -543,3 +554,35 @@ void Task_ChangePriority(TCB_t *tcb,uint8_t new_priority){
 
     __set_PRIMASK(primask);
 }
+
+/*
+栈溢出检测
+在systick_handler中调用，不需要额外的临界区保护
+如果在其他位置调用，需要临界区保护
+*/
+__weak void Stack_OverflowHook(TCB_t *tcb){
+    (void)tcb;
+    __disable_irq();
+    while(1);
+}
+
+static void Stack_CheckCurrent(void){
+    TCB_t *tcb=(TCB_t*)currentTCB;
+    if (tcb==NULL) return;
+    
+    //检测魔数
+    if (tcb->stack_base[STACK_GUARD_WORDS-1]!=STACK_GUARD_MAGIC){
+        Stack_OverflowHook(tcb);
+        return;
+    }
+    //检测SP范围
+    uint32_t psp;
+    __asm volatile("MRS %0, PSP" : "=r" (psp) );
+    uint32_t *sp=(uint32_t*)psp;
+    uint32_t *stack_top=tcb->stack_base+tcb->stack_size;
+    if (sp<(tcb->stack_base+STACK_GUARD_WORDS)||sp>stack_top){
+        Stack_OverflowHook(tcb);
+        return;
+    }
+}
+
