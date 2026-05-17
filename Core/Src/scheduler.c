@@ -234,10 +234,17 @@ void Task_SetState(TCB_t *tcb,uint8_t new_state){
     __set_PRIMASK(primask);
 }
 
+/*
+用户可以自己定义空闲任务函数
+*/
+__weak void Idle_Hook(void){
+    __WFI();
+}
+
 //空闲任务函数
 static void idle_task_func(void){
     while(1){
-        __WFI();
+        Idle_Hook();
     }
 }
 
