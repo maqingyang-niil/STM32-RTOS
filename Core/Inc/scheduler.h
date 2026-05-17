@@ -37,6 +37,7 @@ extern volatile uint32_t current_ticks;
 #define MAX_TASK          32
 #define MAX_TASK_4_MUTEX  (MAX_TASK-1)
 #define MAX_TASK_4_EVENT_GROUPS (MAX_TASK-1)
+#define MAX_TASK_4_TIMER  (MAX_TASK-1)
 #define TIME_SLICE_MS     10      //时间片长度
 
 #define PRIORITY_IDLE     31      //任何任务的优先级都要比idle_task高
@@ -48,6 +49,10 @@ extern volatile uint32_t current_ticks;
 
 #define EVENT_WAIT_ANY 0          //等待事件中的任意一个事件发生
 #define EVENT_WAIT_ALL 1          //等待事件中的所有事件发生
+
+#define TIMER_STATE_IDLE 0
+#define TIMER_STATE_RUNNIING 1
+#define TIMER_STATE_EXPIRED 2
 
 void Scheduler_Init(void);
 
