@@ -51,7 +51,7 @@ extern volatile uint32_t current_ticks;
 #define EVENT_WAIT_ALL 1          //等待事件中的所有事件发生
 
 #define TIMER_STATE_IDLE 0
-#define TIMER_STATE_RUNNIING 1
+#define TIMER_STATE_RUNNING 1
 #define TIMER_STATE_EXPIRED 2
 
 void Scheduler_Init(void);
