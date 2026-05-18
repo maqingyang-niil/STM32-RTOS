@@ -1,16 +1,12 @@
 #include "mutex.h"
 
-//extern volatile TCB_t *currentTCB;
-
 void Mutex_Init(Mutex_t *mutex,const char *name){
+    if (mutex==NULL) return;
     mutex->owner=NULL;
     mutex->original_priority=0;
     mutex->lock_count=0;
-    mutex->waiting_count=0;
 
-    for (int i=0;i<MAX_TASK;i++){
-        mutex->waiting_list[i]=NULL;
-    }
+    List_Init(&mutex->waiting_list);
 
     if (name){
         strncpy(mutex->name,name,sizeof(mutex->name)-1);
@@ -25,20 +21,15 @@ void Mutex_Init(Mutex_t *mutex,const char *name){
 从mutex的等待队列中移除指定任务
 */
 void Mutex_RemoveWaiting(void *mutex_void,TCB_t *tcb){
+    if (mutex_void==NULL||tcb==NULL) return;
     Mutex_t *mutex=(Mutex_t*)mutex_void;
-    for (uint8_t i=0;i<mutex->waiting_count;i++){
-        if (mutex->waiting_list[i]==tcb){
-            for (uint8_t j=i;j<mutex->waiting_count-1;j++){
-                mutex->waiting_list[j]=mutex->waiting_list[j+1];
-            }
-            mutex->waiting_list[mutex->waiting_count-1]=NULL;
-            mutex->waiting_count--;
-            return;
-        }
-    }
+    List_Remove(&mutex->waiting_list,&tcb->wait_node);
 }
 
+
 bool Mutex_Lock(Mutex_t *mutex){
+    if (mutex==NULL) return false;
+
     uint32_t primask=__get_PRIMASK();
     __disable_irq();
 
@@ -72,32 +63,27 @@ bool Mutex_Lock(Mutex_t *mutex){
         Task_ChangePriority(mutex->owner,current->priority);
     }
 
-    if (mutex->waiting_count<MAX_TASK_4_MUTEX){
-        current->waiting_on=mutex;
-        current->unblock_cleanup=Mutex_RemoveWaiting;
+    current->waiting_on=mutex;
+    current->unblock_cleanup=Mutex_RemoveWaiting;
+    
+    List_InsertTail(&mutex->waiting_list,&current->wait_node);
 
-        mutex->waiting_list[mutex->waiting_count]=current;
-        mutex->waiting_count++;
-        Task_SetState(current,TASK_STATE_BLOCKED);
-        __set_PRIMASK(primask);
-        SCB->ICSR|=SCB_ICSR_PENDSVSET_Msk;
-        while(current->state==TASK_STATE_BLOCKED||
-              current->state==TASK_STATE_SUSPENDED){
-            __WFI();
-        }
-        
-        if (current->waiting_on!=NULL){
-            current->waiting_on=NULL;
-            current->unblock_cleanup=NULL;
-            return false;
-        }
-        return true;
+    Task_SetState(current,TASK_STATE_BLOCKED);
+    __set_PRIMASK(primask);
+
+    SCB->ICSR|=SCB_ICSR_PENDSVSET_Msk;
+
+    while(current->state==TASK_STATE_BLOCKED||
+          current->state==TASK_STATE_SUSPENDED){
+        __WFI();
     }
-    else{
-        //等待队列已满
-        __set_PRIMASK(primask);
+        
+    if (current->waiting_on!=NULL){
+        current->waiting_on=NULL;
+        current->unblock_cleanup=NULL;
         return false;
     }
+    return true;
 }
 
 bool Mutex_LockTimeout(Mutex_t *mutex,uint32_t timeout_ms){
@@ -136,36 +122,30 @@ bool Mutex_LockTimeout(Mutex_t *mutex,uint32_t timeout_ms){
         Task_ChangePriority(mutex->owner,current->priority);
     }
 
-    if (mutex->waiting_count<MAX_TASK_4_MUTEX){
-        current->waiting_on=mutex;
-        current->unblock_cleanup=Mutex_RemoveWaiting;
+    current->waiting_on=mutex;
+    current->unblock_cleanup=Mutex_RemoveWaiting;
 
-        mutex->waiting_list[mutex->waiting_count]=current;
-        mutex->waiting_count++;
-
-        current->wake_ticks=timeout_ms+GetCurrentTicks();
-        Task_SetState(current,TASK_STATE_BLOCKED_TIMEOUT);
-        __set_PRIMASK(primask);
-        SCB->ICSR|=SCB_ICSR_PENDSVSET_Msk;
-        while(current->state==TASK_STATE_BLOCKED_TIMEOUT||
-              current->state==TASK_STATE_SUSPENDED){
-            __WFI();
-        }
-
-        if (current->waiting_on!=NULL){
-            current->waiting_on=NULL;
-            current->unblock_cleanup=NULL;
-            return false;
-        }
-        return true;
+    List_InsertTail(&mutex->waiting_list,&current->wait_node);
+    current->wake_ticks=timeout_ms+GetCurrentTicks();
+    Task_SetState(current,TASK_STATE_BLOCKED_TIMEOUT);
+    __set_PRIMASK(primask);
+    SCB->ICSR|=SCB_ICSR_PENDSVSET_Msk;
+    while(current->state==TASK_STATE_BLOCKED_TIMEOUT||
+          current->state==TASK_STATE_SUSPENDED){
+         __WFI();
     }
-    else{
-        __set_PRIMASK(primask);
+
+    if (current->waiting_on!=NULL){
+        current->waiting_on=NULL;
+        current->unblock_cleanup=NULL;
         return false;
     }
+    return true;
 }
 
 bool Mutex_TryLock(Mutex_t *mutex){
+    if (mutex==NULL) return false;
+
     uint32_t primask=__get_PRIMASK();
     __disable_irq();
 
@@ -199,6 +179,7 @@ bool Mutex_TryLock(Mutex_t *mutex){
 }
 
 bool Mutex_Unlock(Mutex_t *mutex){
+    if (mutex==NULL) return false;
     uint32_t primask=__get_PRIMASK();
     __disable_irq();
 
@@ -220,25 +201,22 @@ bool Mutex_Unlock(Mutex_t *mutex){
     //完全释放锁,恢复优先级
     Task_ChangePriority(current,mutex->original_priority);
 
-    if (mutex->waiting_count>0){
-        TCB_t *next=mutex->waiting_list[0];
-        for (uint8_t i=0;i<mutex->waiting_count-1;i++){
-            mutex->waiting_list[i]=mutex->waiting_list[i+1];
-        }
-        mutex->waiting_list[mutex->waiting_count-1]=NULL;
-        mutex->waiting_count--;
+    if (!List_IsEmpty(&mutex->waiting_list)){
+        TCB_t *task=(TCB_t*)mutex->waiting_list.head->owner;
 
-        mutex->owner=next;
-        mutex->original_priority=next->priority;
+        List_Remove(&mutex->waiting_list,mutex->waiting_list.head);
+
+        mutex->owner=task;
+        mutex->original_priority=task->priority;
         mutex->lock_count=1;
 
-        next->waiting_on=NULL;
-        next->unblock_cleanup=NULL;
+        task->waiting_on=NULL;
+        task->unblock_cleanup=NULL;
 
-        Task_SetState(next,TASK_STATE_READY);
+        Task_SetState(task,TASK_STATE_READY);
         __set_PRIMASK(primask);
 
-        if (next->priority<current->priority){
+        if (task->priority<current->priority){
             SCB->ICSR|=SCB_ICSR_PENDSVSET_Msk;
         }
     }
@@ -253,9 +231,11 @@ bool Mutex_Unlock(Mutex_t *mutex){
 }
 
 bool Mutex_IsOwner(Mutex_t *mutex){
+    if (mutex==NULL) return false;
     return mutex->owner==(TCB_t*)currentTCB;
 }
 
 TCB_t* Mutex_GetOwner(Mutex_t *mutex){
+    if (mutex==NULL) return NULL;
     return mutex->owner;
 }

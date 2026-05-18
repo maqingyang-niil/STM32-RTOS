@@ -5,7 +5,6 @@
 #include <stdbool.h>
 #include <string.h>
 #include "scheduler.h"
-#include "list.h"
 
 typedef struct{
     volatile uint32_t count;      //信号量记数（当前可用资源量）

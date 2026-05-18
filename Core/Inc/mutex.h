@@ -3,14 +3,14 @@
 #include <stdint.h>
 #include <stdbool.h>
 #include <string.h>
-#include "stm32f4xx_hal.h"
 #include "scheduler.h"
+#include "list.h"
+
 typedef struct{
     TCB_t *owner;                    //当前拥有者
     uint8_t original_priority;       //拥有者的原始优先级
     uint8_t lock_count;              //递归计数
-    TCB_t *waiting_list[MAX_TASK];   //等待队列
-    uint8_t waiting_count;           //等待任务数量
+    List_t waiting_list;             //等待队列
     char name[16];                   //互斥锁名称
 
 }Mutex_t;
