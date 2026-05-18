@@ -4,15 +4,15 @@ volatile TCB_t *currentTCB=NULL;
 volatile uint8_t isFirstSwitch=1;
 volatile uint32_t current_ticks=0;
 static volatile uint32_t tick_count=0;    //时间记数，用于确定分片时间
-static TCB_t *taskList[MAX_TASK];    //任务列表
-static uint8_t taskCount=0;          //任务数量
+static TCB_t *taskList[MAX_TASK];         //任务列表
+static uint8_t taskCount=0;               //任务数量
 
 static TCB_t idle_tcb;
 static uint32_t idle_stack[64];
 
 static uint32_t ready_bitmap=0;                   //就绪位图
 static TCB_t *ready_list[PRIORITY_LEVELS]={NULL}; //每个优先级的环形列表的表尾
-static TCB_t *delay_list=NULL;                    //延迟链表
+static List_t delay_list;                         //延迟链表
 
 //位图操作宏
 #define SET_READY_BIT(priority)    (ready_bitmap|=(1U<<(priority)))
@@ -21,7 +21,7 @@ static TCB_t *delay_list=NULL;                    //延迟链表
 
 //函数声明
 static void Stack_CheckCurrent(void);
-
+static void idle_task_func(void);
 
 /*
 获取当前时钟计数值
@@ -37,49 +37,18 @@ uint32_t GetCurrentTicks(void){
 */
 static void AddToDelayList(TCB_t *tcb){
     if (tcb==NULL)  return;
-    tcb->next=NULL;//冗余设计
-    //如果当前delay_list中没有任务 或者 第一个任务的wake_ticks比tcb的小，插入头部
-    if (delay_list==NULL || (int32_t)(delay_list->wake_ticks-tcb->wake_ticks)>0){
-        tcb->next=delay_list;
-        delay_list=tcb;
-        return;
-    }
-    TCB_t *prev=delay_list;
-    TCB_t *curr=delay_list->next;
-
-    while(curr!=NULL&&(int32_t)(curr->wake_ticks-tcb->wake_ticks)<0){
-        prev=curr;
-        curr=curr->next;
-    }
-    tcb->next=curr;
-    prev->next=tcb;
+    tcb->delay_node.value=tcb->wake_ticks;
+    List_InsertSorted(&delay_list,&tcb->delay_node);
 }
 
 /*
 从delay_list中移除指定任务
 依赖调用者保证临界区
-移除后tcb->next=NULL
+
 */
 static void RemoveFromDelayList(TCB_t *tcb){
-    if (tcb==NULL || delay_list==NULL){
-        return;
-    }
-    // 头节点为要移除的节点
-    if (delay_list==tcb){
-        delay_list=tcb->next;
-        tcb->next=NULL;
-        return;
-    }
-    // 非头节点：找前驱
-    TCB_t *prev=delay_list;
-    while(prev->next!=NULL && prev->next!=tcb){
-        prev=prev->next;
-    }
-    if (prev->next==NULL){
-        return; // 未找到
-    }
-    prev->next=tcb->next;
-    tcb->next=NULL;
+    if (tcb==NULL) return;
+    List_Remove(&delay_list,&tcb->delay_node);
 }
 
 /*
@@ -99,21 +68,24 @@ static void DelayListCheck(void){
     uint32_t primask=__get_PRIMASK();
     __disable_irq();
     bool need_immed_schedule=false;
-    while(delay_list!=NULL && TickDiff(current_ticks,delay_list->wake_ticks)>=0){//满足条件，该移出delay_list
-        TCB_t *tcb=delay_list;
+    while(!List_IsEmpty(&delay_list)){
+        TCB_t *tcb=(TCB_t*)delay_list.head->owner;
+
+        if (TickDiff(current_ticks,tcb->wake_ticks)<0) break;
+
         if (tcb->state==TASK_STATE_BLOCKED_TIMEOUT){
             if (tcb->unblock_cleanup!=NULL){
                 tcb->unblock_cleanup(tcb->waiting_on,tcb);
             }
         }
         Task_SetState(tcb,TASK_STATE_READY);
-        if (currentTCB && tcb->priority<((TCB_t*)currentTCB)->priority){
+        if (currentTCB&&tcb->priority<((TCB_t*)currentTCB)->priority){
             need_immed_schedule=true;
         }
     }
-    __set_PRIMASK(primask);
 
-    if (need_immed_schedule)  SCB->ICSR |= SCB_ICSR_PENDSVSET_Msk;
+    __set_PRIMASK(primask);
+    if (need_immed_schedule) SCB->ICSR|=SCB_ICSR_PENDSVSET_Msk;
 }
 
 /*
@@ -234,19 +206,7 @@ void Task_SetState(TCB_t *tcb,uint8_t new_state){
     __set_PRIMASK(primask);
 }
 
-/*
-用户可以自己定义空闲任务函数
-*/
-__weak void Idle_Hook(void){
-    __WFI();
-}
 
-//空闲任务函数
-static void idle_task_func(void){
-    while(1){
-        Idle_Hook();
-    }
-}
 
 /*
 初始化任务调度器
@@ -265,7 +225,7 @@ void Scheduler_Init(void){
     for (int i=0;i<PRIORITY_LEVELS;i++){
         ready_list[i]=NULL;
     }
-    delay_list=NULL;
+    List_Init(&delay_list);
     Scheduler_AddTask(&idle_tcb,
                       idle_stack,
                       IDLE_STACK_SIZE,
@@ -284,12 +244,17 @@ void Scheduler_AddTask(TCB_t *tcb,
                        void (*taskFunc)(void),
                        uint8_t priority,
                        const char *name){
+    if (tcb==NULL||stack==NULL) return;    
+
     if (taskCount>=MAX_TASK){
         return;
     }
     if (priority>=PRIORITY_LEVELS){
         priority=PRIORITY_LEVELS-2;//任何任务的优先级都要比idle task的优先级高
     }
+
+    List_NodeInit(&tcb->wait_node,tcb);
+    List_NodeInit(&tcb->delay_node,tcb);
 
     //栈溢出检测魔数
     for (uint8_t i=0;i<STACK_GUARD_WORDS;i++){
@@ -379,6 +344,7 @@ void SysTick_Handler(void){
     //当前任务栈溢出检查
     Stack_CheckCurrent();
     //时间片计数
+    Scheduler_TickHook();
     tick_count++;
     if (tick_count>=TIME_SLICE_MS){
         tick_count=0;
@@ -578,6 +544,20 @@ __weak void Stack_OverflowHook(TCB_t *tcb){
     (void)tcb;
     __disable_irq();
     while(1);
+}
+
+/*
+用户可以自己定义空闲任务函数
+*/
+__weak void Idle_Hook(void){
+    __WFI();
+}
+
+//空闲任务函数
+static void idle_task_func(void){
+    while(1){
+        Idle_Hook();
+    }
 }
 
 static void Stack_CheckCurrent(void){

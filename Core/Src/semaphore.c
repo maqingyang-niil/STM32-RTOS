@@ -10,11 +10,8 @@ void Sem_Init(Semaphore_t *sem,
               uint32_t initial_count,
               const char *name){
     sem->count=initial_count;
-    sem->waiting_count=0;
 
-    for (int i=0;i<MAX_TASK;i++){
-        sem->waiting_list[i]=NULL;
-    }
+    List_Init(&sem->waiting_list);
 
     if (name){
         strncpy(sem->name,name,sizeof(sem->name)-1);
@@ -46,20 +43,13 @@ bool Sem_Wait(Semaphore_t *sem){
         __set_PRIMASK(primask);
         return true;
     }
-    
-    if (sem->waiting_count>=MAX_TASK){
-        __set_PRIMASK(primask);
-        return false;
-    }
 
     Task_SetState(current,TASK_STATE_BLOCKED);
 
     current->waiting_on=sem;
     current->unblock_cleanup=Sem_RemoveWaiting;
 
-
-    sem->waiting_list[sem->waiting_count]=current;
-    sem->waiting_count++;
+    List_InsertTail(&sem->waiting_list,&current->wait_node);
     __set_PRIMASK(primask);
 
     SCB->ICSR |= SCB_ICSR_PENDSVSET_Msk;
@@ -89,6 +79,7 @@ bool Sem_Wait(Semaphore_t *sem){
 */
 bool Sem_TryWait(Semaphore_t *sem){
     if (sem==NULL) return false;
+
     uint32_t primask=__get_PRIMASK();
     __disable_irq();
 
@@ -109,26 +100,25 @@ bool Sem_TryWait(Semaphore_t *sem){
 }
 
 /*
+内部临界区保护
 释放信号量
 */
 void Sem_Post(Semaphore_t *sem){
     uint32_t primask=__get_PRIMASK();
     __disable_irq();
     // 有等待任务
-    if (sem->waiting_count>0){
-        TCB_t *task=sem->waiting_list[0];
-
-        for (uint8_t i=0;i<sem->waiting_count-1;i++){
-            sem->waiting_list[i]=sem->waiting_list[i+1];
-        }
-        sem->waiting_list[sem->waiting_count-1]=NULL;
-        sem->waiting_count--;
+    if (!List_IsEmpty(&sem->waiting_list)){
+        TCB_t *task=(TCB_t*)sem->waiting_list.head->owner;
+        List_Remove(&sem->waiting_list,sem->waiting_list.head);
+        
         task->waiting_on=NULL;
         task->unblock_cleanup=NULL;
+
         Task_SetState(task,TASK_STATE_READY);
         __set_PRIMASK(primask);
+
         if (currentTCB&&task->priority<((TCB_t*)currentTCB)->priority){
-            SCB->ICSR |= SCB_ICSR_PENDSVSET_Msk;
+            SCB->ICSR|=SCB_ICSR_PENDSVSET_Msk;
         }
     }
     else{
@@ -138,7 +128,7 @@ void Sem_Post(Semaphore_t *sem){
 }
 
 bool Sem_WaitTimeout(Semaphore_t *sem, uint32_t timeout_ms){
-    if (sem==NULL||timeout_ms==0) return false;
+    if (sem==NULL) return false;
 
     uint32_t primask=__get_PRIMASK();
     __disable_irq();
@@ -154,16 +144,15 @@ bool Sem_WaitTimeout(Semaphore_t *sem, uint32_t timeout_ms){
         __set_PRIMASK(primask);
         return true;
     }
-    
-    if (sem->waiting_count>=MAX_TASK){
+
+    if (timeout_ms==0){
         __set_PRIMASK(primask);
         return false;
     }
 
     current->waiting_on=sem;
     current->unblock_cleanup=Sem_RemoveWaiting;
-    sem->waiting_list[sem->waiting_count]=current;
-    sem->waiting_count++;
+    List_InsertTail(&sem->waiting_list,&current->wait_node);
 
     current->wake_ticks=timeout_ms+GetCurrentTicks();
     Task_SetState(current,TASK_STATE_BLOCKED_TIMEOUT);
@@ -188,6 +177,7 @@ bool Sem_WaitTimeout(Semaphore_t *sem, uint32_t timeout_ms){
 内部临界区操作
 */
 uint32_t Sem_GetValue(Semaphore_t *sem){
+    if (sem==NULL) return 0;
     uint32_t primask=__get_PRIMASK();
     __disable_irq();
     uint32_t value=sem->count;
@@ -200,31 +190,33 @@ uint32_t Sem_GetValue(Semaphore_t *sem){
 内部临界区操作
 */
 uint8_t Sem_GetWaitingCount(Semaphore_t *sem){
+    if (sem==NULL) return 0;
+
     uint32_t primask=__get_PRIMASK();
     __disable_irq();
-    uint8_t count=sem->waiting_count;
+    uint8_t count=sem->waiting_list.count;
     __set_PRIMASK(primask);
     return count;
 }
 
 void Sem_Reset(Semaphore_t *sem,uint32_t new_count){
+    if (sem==NULL) return;
+
     uint32_t primask=__get_PRIMASK();
     __disable_irq();
 
+    //决定是否触发调度
     uint8_t priority=PRIORITY_IDLE;
 
-    while(sem->waiting_count>0){
-        TCB_t *task=sem->waiting_list[0];
+    while(!List_IsEmpty(&sem->waiting_list)){
+        TCB_t *task=(TCB_t*)sem->waiting_list.head->owner;
         if (priority>task->priority){
             priority=task->priority;
         }
-        for (uint8_t i=0;i<sem->waiting_count-1;i++){
-            sem->waiting_list[i]=sem->waiting_list[i+1];
-        }
-        sem->waiting_list[sem->waiting_count-1]=NULL;
-        sem->waiting_count--;
+        List_Remove(&sem->waiting_list,sem->waiting_list.head);
         task->waiting_on=NULL;
         task->unblock_cleanup=NULL;
+
         Task_SetState(task,TASK_STATE_READY);
     }
 
@@ -237,16 +229,11 @@ void Sem_Reset(Semaphore_t *sem,uint32_t new_count){
     }
 }
 
+/*
+由调用者保证临界区
+*/
 void Sem_RemoveWaiting(void *sem_void,TCB_t *tcb){
+    if (sem_void==NULL||tcb==NULL) return;
     Semaphore_t *sem=(Semaphore_t*)sem_void;
-    for (uint8_t i=0;i<sem->waiting_count;i++){
-        if (sem->waiting_list[i]==tcb){
-            for (uint8_t j=i;j<sem->waiting_count-1;j++){
-                sem->waiting_list[j]=sem->waiting_list[j+1];//
-            }
-            sem->waiting_list[sem->waiting_count-1]=NULL;
-            sem->waiting_count--;
-            return;
-        }
-    }
+    List_Remove(&sem->waiting_list,&tcb->wait_node);
 }

@@ -137,3 +137,7 @@ void Timer_Tick(void){
         }
     }
 }
+
+void Scheduler_TickHook(void){
+    Timer_Tick();
+}

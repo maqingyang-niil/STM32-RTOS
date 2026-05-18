@@ -4,13 +4,12 @@
 #include <stdint.h>
 #include <stdbool.h>
 #include <string.h>
-#include "stm32f4xx.h"
 #include "scheduler.h"
+#include "list.h"
 
 typedef struct{
     volatile uint32_t count;      //信号量记数（当前可用资源量）
-    TCB_t *waiting_list[MAX_TASK];
-    volatile uint8_t waiting_count;
+    List_t waiting_list;
     char name[16];
 }Semaphore_t;
 

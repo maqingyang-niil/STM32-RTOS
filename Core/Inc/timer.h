@@ -7,6 +7,10 @@
 #include "scheduler.h"
 #include "list.h"
 
+#define TIMER_STATE_IDLE 0
+#define TIMER_STATE_RUNNING 1
+#define TIMER_STATE_EXPIRED 2
+
 typedef struct Timer_t Timer_t;
 
 typedef void (*TimerCallback_t)(struct Timer_t *timer,void *arg);

@@ -5,6 +5,7 @@
 #include <stdbool.h>
 #include <string.h>
 #include "stm32f4xx.h"
+#include "list.h"
 
 typedef struct TCB_t{
     uint32_t * volatile stackPtr;        //栈指针
@@ -22,6 +23,9 @@ typedef struct TCB_t{
     uint32_t wait_bits;                  //等待的事件位
     uint8_t wait_mode;                   //等待模式，0=等待任意，1=等待全部
     uint8_t wait_clear;                  //满足后是否自动清除
+
+    ListNode_t wait_node;                //用于所有等待队列
+    ListNode_t delay_node;               //用于延迟队列
 } TCB_t;
 
 extern volatile TCB_t *currentTCB;
@@ -50,9 +54,6 @@ extern volatile uint32_t current_ticks;
 #define EVENT_WAIT_ANY 0          //等待事件中的任意一个事件发生
 #define EVENT_WAIT_ALL 1          //等待事件中的所有事件发生
 
-#define TIMER_STATE_IDLE 0
-#define TIMER_STATE_RUNNING 1
-#define TIMER_STATE_EXPIRED 2
 
 void Scheduler_Init(void);
 
@@ -85,6 +86,12 @@ void Task_Resume(TCB_t *tcb);
 
 //仅在mutex的优先级继承功能中使用
 void Task_ChangePriority(TCB_t *tcb,uint8_t new_priority);
+
+__weak void Idle_Hook(void);
+
+__weak void Stack_OverflowHook(TCB_t *tcb);
+
+__weak void Scheduler_TickHook(void);
 
 
 #endif /* __SCHEDULER_H */

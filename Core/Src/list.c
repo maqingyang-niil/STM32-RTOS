@@ -43,6 +43,7 @@ void List_InsertTail(List_t *list,ListNode_t *node){
     list->tail = node;
     list->count++;
 }
+
 void List_Remove(List_t *list,ListNode_t *node){
     if (list==NULL||node==NULL||list->count==0) return;
 
