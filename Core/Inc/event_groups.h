@@ -7,12 +7,14 @@
 #include <string.h>
 #include "stm32f4xx.h"
 #include "scheduler.h"
+#include "list.h"
 
+#define EVENT_WAIT_ANY 0              //等待事件中的任意一个事件发生
+#define EVENT_WAIT_ALL 1              //等待事件中的所有事件发生
 
 typedef struct{
     volatile uint32_t bits;    //事件位
-    TCB_t *waiting_list[MAX_TASK_4_EVENT_GROUPS]; //等待该事件的任务列表，最多支持MAX_TASK-1个任务等待
-    uint8_t waiting_count;     //等待该事件的任务数量   
+    List_t waiting_list;  
     char name[16];
 }EventFlags_t;
 
@@ -29,4 +31,5 @@ uint32_t EventFlags_WaitTimeout(EventFlags_t *ef,uint32_t bits,uint8_t mode,uint
 void EventFlags_Clear(EventFlags_t *ef, uint32_t bits);
 
 uint32_t EventFlags_Get(EventFlags_t *ef);
+
 #endif /* __EVENT_GROUPS_H */

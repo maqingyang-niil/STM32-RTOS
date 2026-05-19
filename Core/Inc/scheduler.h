@@ -39,7 +39,6 @@ extern volatile uint32_t current_ticks;
 #define TASK_STATE_UNINIT     0xFF
 
 #define MAX_TASK          32
-#define MAX_TASK_4_EVENT_GROUPS (MAX_TASK-1)
 #define TIME_SLICE_MS     10          //时间片长度
 
 #define PRIORITY_IDLE     31          //任何任务的优先级都要比idle_task高
@@ -49,8 +48,6 @@ extern volatile uint32_t current_ticks;
 #define STACK_GUARD_MAGIC 0xDEADBEEF  //栈溢出检测魔数，栈底，不应覆盖
 #define STACK_GUARD_WORDS 4           //栈溢出检测保护字数量，栈底，不应覆盖
 
-#define EVENT_WAIT_ANY 0              //等待事件中的任意一个事件发生
-#define EVENT_WAIT_ALL 1              //等待事件中的所有事件发生
 
 
 void Scheduler_Init(void);
