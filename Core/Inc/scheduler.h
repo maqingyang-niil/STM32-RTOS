@@ -26,6 +26,9 @@ typedef struct TCB_t{
 
     ListNode_t wait_node;                //用于所有等待队列
     ListNode_t delay_node;               //用于延迟队列
+
+    uint32_t notify_value;
+    uint8_t notify_pending;
 } TCB_t;
 
 extern volatile TCB_t *currentTCB;
