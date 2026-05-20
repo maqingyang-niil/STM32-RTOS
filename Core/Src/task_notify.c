@@ -98,12 +98,14 @@ uint32_t Task_NotifyWaitTimeout(uint32_t clear_bits, uint32_t timeout_ms){
     primask=__get_PRIMASK();
     __disable_irq();
 
+    //pending为0，没收到通知，清waiting_on，返回
     if (!current->notify_pending){
         current->waiting_on=NULL;
         __set_PRIMASK(primask);
         return 0;
     }
-
+    
+    //pending为1，收到通知，读值返回
     uint32_t val = current->notify_value;
     current->notify_value &= ~clear_bits;
     current->notify_pending = 0;
