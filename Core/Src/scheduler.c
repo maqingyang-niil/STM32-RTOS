@@ -30,6 +30,11 @@ uint32_t GetCurrentTicks(void){
     return current_ticks;
 }
 
+
+void Scheduler_TickHook(void){
+    //用户可以在这里添加自己的代码
+}
+
 /*
 加入delay_list
 依赖调用者保证临界区
@@ -44,7 +49,6 @@ static void AddToDelayList(TCB_t *tcb){
 /*
 从delay_list中移除指定任务
 依赖调用者保证临界区
-
 */
 static void RemoveFromDelayList(TCB_t *tcb){
     if (tcb==NULL) return;
