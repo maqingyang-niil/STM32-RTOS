@@ -9,10 +9,9 @@ Built as a deep-dive into embedded systems internals — no HAL abstractions, no
 
 | Item | Detail |
 |------|--------|
-| MCU | STM32F407xx (Cortex-M4, 168MHz) |
+| MCU | STM32F407xx Cortex-M4|
 | IDE | Keil MDK |
-| Language | C99 |
-| Kernel | Self-implemented |
+| Language | C |
 
 ---
 
@@ -20,15 +19,15 @@ Built as a deep-dive into embedded systems internals — no HAL abstractions, no
 
 ```
 ┌─────────────────────────────────────────────┐
-│                 Application                  │
+│                 Application                 │
 ├──────────┬──────────┬───────────┬───────────┤
 │ Semaphore│  Mutex   │EventFlags │   Queue   │
 ├──────────┴──────────┴───────────┴───────────┤
 │          Task Notify │ MemPool  │   Timer   │
 ├─────────────────────────────────────────────┤
-│                  Scheduler                   │
+│                  Scheduler                  │
 ├─────────────────────────────────────────────┤
-│               Linked List                    │
+│               Linked List                   │
 └─────────────────────────────────────────────┘
 ```
 
@@ -61,43 +60,7 @@ Built as a deep-dive into embedded systems internals — no HAL abstractions, no
 - **Software Timer** — one-shot / auto-reload, sorted insertion for O(1) tick processing,  
   callback via `Scheduler_TickHook` (no circular dependency)
 
----
 
-## Quick Start
-
-```c
-#include "scheduler.h"
-#include "semaphore.h"
-
-TCB_t tcb_a, tcb_b;
-uint32_t stack_a[256], stack_b[256];
-
-void Task_A(void) {
-    while (1) {
-        // your code
-        Task_Delay(100);
-    }
-}
-
-void Task_B(void) {
-    while (1) {
-        // your code
-        Task_Delay(200);
-    }
-}
-
-int main(void) {
-    HAL_Init();
-    SystemClock_Config();
-
-    Scheduler_Init();
-    Scheduler_AddTask(&tcb_a, stack_a, 256, Task_A, 1, "TaskA");
-    Scheduler_AddTask(&tcb_b, stack_b, 256, Task_B, 2, "TaskB");
-    Scheduler_Start();
-
-    while (1) { __NOP(); }
-}
-```
 
 ---
 

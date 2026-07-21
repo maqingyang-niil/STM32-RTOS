@@ -13,10 +13,14 @@ void List_NodeInit(ListNode_t *node,void *owner){
     node->prev = NULL;
     node->value = 0;
     node->owner = owner;
+    node->container = NULL;
 }
 
+/*
+  从头部插入节点
+*/
 void List_InsertHead(List_t *list,ListNode_t *node){
-    if (list==NULL||node==NULL) return;
+    if (list==NULL||node==NULL||node->container!=NULL) return;
     node->prev=NULL;
     node->next=list->head;
     if (list->head){
@@ -27,11 +31,15 @@ void List_InsertHead(List_t *list,ListNode_t *node){
     }
     
     list->head=node;
+    node->container=list;
     list->count++;
 }
 
+/*
+  从尾部插入节点
+*/
 void List_InsertTail(List_t *list,ListNode_t *node){
-    if (list==NULL||node==NULL) return;
+    if (list==NULL||node==NULL||node->container!=NULL) return;
     node->next = NULL;
     node->prev = list->tail;
     if (list->tail){
@@ -41,11 +49,15 @@ void List_InsertTail(List_t *list,ListNode_t *node){
         list->head = node;
     }
     list->tail = node;
+    node->container = list;
     list->count++;
 }
 
+/*
+  从列表中移除节点
+*/
 void List_Remove(List_t *list,ListNode_t *node){
-    if (list==NULL||node==NULL||list->count==0) return;
+    if (list==NULL||node==NULL||list->count==0||node->container!=list) return;
 
     if (node->prev!=NULL){
         node->prev->next=node->next;
@@ -62,11 +74,12 @@ void List_Remove(List_t *list,ListNode_t *node){
     }
     node->next=NULL;
     node->prev=NULL;
+    node->container=NULL;
     list->count--;
 }
 
 void List_InsertSorted(List_t *list,ListNode_t *node){
-    if (list==NULL||node==NULL) return;
+    if (list==NULL||node==NULL||node->container!=NULL) return;
     if (list->head==NULL||node->value<list->head->value){
         List_InsertHead(list,node);
         return;
@@ -87,6 +100,7 @@ void List_InsertSorted(List_t *list,ListNode_t *node){
     node->prev=curr->prev;
     curr->prev->next=node;
     curr->prev=node;
+    node->container=list;
     list->count++;
 }
 

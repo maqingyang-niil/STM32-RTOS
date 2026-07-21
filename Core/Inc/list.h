@@ -9,7 +9,8 @@ typedef struct ListNode {
     struct ListNode *next;
     struct ListNode *prev;
     uint32_t value;
-    void *owner;
+    void *owner;              //指向拥有这个节点的对象，通常是TCB_t
+    struct List *container;   //拥有这个节点的列表
 }ListNode_t;
 
 typedef struct {
