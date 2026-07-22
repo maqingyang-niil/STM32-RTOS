@@ -5,19 +5,22 @@
 #include <stdbool.h>
 #include <stddef.h>
 
-typedef struct ListNode {
-    struct ListNode *next;
-    struct ListNode *prev;
+typedef struct ListNode ListNode_t;
+typedef struct List List_t;
+
+struct ListNode {
+    ListNode_t *next;
+    ListNode_t *prev;
     uint32_t value;
     void *owner;              //指向拥有这个节点的对象，通常是TCB_t
-    struct List *container;   //拥有这个节点的列表
-}ListNode_t;
+    List_t *container;   //拥有这个节点的列表
+};
 
-typedef struct {
+struct List {
     ListNode_t *head;
     ListNode_t *tail;
     uint32_t count;
-}List_t;
+};
 
 void List_Init(List_t *list);
 void List_NodeInit(ListNode_t *node,void *owner);
